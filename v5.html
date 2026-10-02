@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>V5 製程影像追溯（Prototype）</title>
+<title>V5 製程影像追溯（MHR 測試版）</title>
 <style>
   :root{
     --blue:#1E5EB8; --navy:#0F2D5E; --navy-2:#1A4080; --ink:#0A1628; --ink-2:#3A5070; --muted:#6080A0;
@@ -44,6 +44,11 @@
   .login-card h1{margin:0;font-size:22px;color:var(--navy);letter-spacing:2px}
   .login-card .eyebrow{font-size:11px;letter-spacing:3px;color:var(--blue);font-weight:700}
   label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--navy)}
+  label.f select{height:48px;padding:0 10px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:var(--ink);font-size:16px}
+  .banner{border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6}
+  .banner.ok{background:var(--ok-bg);color:var(--ok)} .banner.warn{background:var(--warn-bg);color:var(--warn)}
+  .chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2);min-height:44px;cursor:pointer}
+  .chk input{width:18px;height:18px}
   label.f input,label.f textarea{height:48px;padding:0 12px;border:1px solid var(--line-2);border-radius:8px;background:#fff;color:var(--ink);font-size:16px}
   label.f textarea{height:auto;min-height:72px;padding:10px 12px;resize:vertical}
   label.f input:focus,label.f textarea:focus{outline:2px solid var(--blue);outline-offset:0;border-color:var(--blue)}
@@ -181,20 +186,22 @@
 
   <!-- 工單查詢 -->
   <main class="wrap" id="vOrders">
+    <div class="banner" id="srcBanner" role="status" hidden></div>
     <section class="panel" aria-labelledby="hSearch">
       <h2 id="hSearch">輸入工單號</h2>
       <form class="search" id="searchForm">
-        <input id="woInput" type="text" placeholder="例：WO2510-0001" aria-label="工單號" autocomplete="off" enterkeyhint="search">
+        <input id="woInput" type="text" placeholder="例：WO-HS01A-2601" aria-label="工單號" autocomplete="off" enterkeyhint="search">
         <button class="icon-btn" type="button" id="scanWoBtn" aria-label="掃描工單條碼">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
         </button>
         <button class="btn-pri" type="submit" style="height:48px">帶入</button>
       </form>
       <div class="err" id="woErr" role="alert"></div>
-      <div class="sub">工單基本資料與工站途程由 MHR 帶入，不需手動建立。</div>
+      <div class="sub">工單基本資料與工站途程由 MHR 帶入（唯讀），不需手動建立。</div>
     </section>
     <section class="panel" aria-labelledby="hList">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><h2 id="hList">本廠區進行中工單</h2><span class="sub" id="listSrc"></span></div>
+      <label class="chk"><input type="checkbox" id="showDone">顯示已完成工單</label>
       <div class="wo-list" id="woList"></div>
     </section>
   </main>
@@ -209,7 +216,7 @@
       <div class="prog"><div class="bar"><i id="oBar"></i></div><span class="meta" id="oProg" style="white-space:nowrap"></span></div>
     </section>
     <section class="panel" aria-labelledby="hRoute">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="hRoute">工站途程</h2><span class="sub">點選工站進行拍照紀錄</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="hRoute">工站途程</h2><span class="sub">MHR 製程路線 · 點選工站拍照紀錄</span></div>
       <ol class="route" id="route"></ol>
     </section>
   </main>
@@ -248,6 +255,7 @@
   </div>
   <form class="review" id="review" hidden>
     <div class="meta" id="rvMeta"></div>
+    <label class="f" id="rvMachWrap">設備（選填）<select id="rvMach"></select></label>
     <div class="seg" role="radiogroup" aria-label="結果判定">
       <label><input type="radio" name="res" value="OK" checked><span class="ok">正常 OK</span></label>
       <label><input type="radio" name="res" value="NG"><span class="ng">異常 NG</span></label>
@@ -289,36 +297,25 @@
 (function(){
 'use strict';
 /* =====================================================================
- *  設定：與 SyncHub / OMS 共用同一個 Supabase 專案與帳號體系
+ *  V5 製程影像追溯 — MHR 附屬（測試版）
+ *  身分：SyncHub/OMS（Supabase drfq…）  工單／途程：MHR（Supabase vwus…，唯讀）
  * ===================================================================== */
-var APP_VER = 'P0.3';
-var SB_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
-var SB_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
+var APP_VER = 'T0.4';
+// OMS / SyncHub（身分）
+var OMS_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
+var OMS_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
+// MHR（工單、產品路線、設備；本頁只讀不寫）
+var MHR_URL = 'https://vwusebvvsqyjydddupit.supabase.co';
+var MHR_KEY = 'sb_publishable_Ju-c9cuXYJil7PEJ1-NspA_ASzfIzi5';
 var EMAIL_DOMAIN = '@id.syncmold.com.tw';      // 工號 → <工號小寫>@id.syncmold.com.tw（同 OMS doLogin）
 var SYSTEM_CODE = 'V5';                         // 待 DTO 在 SYNCHUB_SYSTEMS / system_access 新增
-var ENFORCE_SYSTEM_ACCESS = false;              // prototype：未開通也放行，只顯示提示
-var SESSION_KEY = 'v5trace_auth_v1';
+var ENFORCE_SYSTEM_ACCESS = false;              // 測試期：未開通也放行，只顯示提示
+var SESSION_KEY = 'v5trace_auth_v2';
 var FACTORY_NAMES = { SY:'臺北信錦(零組件)', SH:'信鋐', GT:'敬得觀音', LH:'陸合(台中)', TC:'敬得太倉', SF:'蘇州富鴻齊', KS:'昆山鴻嘉駿', LS:'陸合(蘇州)', CF:'重慶富鴻齊', FF:'福州富鴻齊', GH:'福清冠華(塑膠)', FQ:'福清富群', KH:'東莞冠皇', JS:'中山富鴻齊', VN:'Syncmold Vietnam', TH:'Syncmold Thailand', LT:'陸合(泰國)' };
-
-/* =====================================================================
- *  MHR 工單資料（示範）— 正式版改為查 MHR 的工單／途程資料表
- * ===================================================================== */
-var ROUTE_FULL = [
-  { station:'原料進料', equip:'RM-01', fixture:'—', mold:'—' },
-  { station:'壓鑄', equip:'DC-03', fixture:'—', mold:'MD-2031' },
-  { station:'CNC 加工', equip:'CNC-07', fixture:'FX-112', mold:'—' },
-  { station:'研磨／滾磨', equip:'GR-02', fixture:'—', mold:'—' },
-  { station:'塗裝', equip:'CT-01', fixture:'FX-205', mold:'—' },
-  { station:'檢驗', equip:'QC-04', fixture:'—', mold:'—' },
-  { station:'組裝', equip:'AS-09', fixture:'FX-301', mold:'—' },
-  { station:'包裝出貨', equip:'PK-01', fixture:'—', mold:'—' }
-];
-function mkRoute(idx){ return idx.map(function(i,k){ var r=ROUTE_FULL[i]; return { seq:(k+1)*10, station:r.station, equip:r.equip, fixture:r.fixture, mold:r.mold, records:[] }; }); }
-var ORDERS = [
-  { wo:'WO2510-0001', lot:'LOT251001-01', part:'V5-HSG-001', model:'V5', qty:500, factory:'SY', due:'2026/10/08', route:mkRoute([0,1,2,3,4,5,6,7]) },
-  { wo:'WO2510-0002', lot:'LOT251001-02', part:'V5-BRK-014', model:'V5', qty:1200, factory:'SY', due:'2026/10/10', route:mkRoute([0,1,2,3,5,7]) },
-  { wo:'WO2510-0003', lot:'LOT251001-03', part:'V5-CVR-220', model:'V5', qty:300, factory:'SY', due:'2026/10/15', route:mkRoute([0,2,4,5,6,7]) }
-];
+// MHR 製程主檔（照 MHR index.html 的 STATIONS）
+var STATIONS = { DC:['壓鑄','Die Casting'], CN:['機加','CNC'], GR:['打磨','Grinding'], BL:['珠擊','Shot Blasting'], VB:['振研','Vibratory'], TH:['巡牙','Tapping'], DP:['點膠','Dispensing'], PR:['印刷','Printing'], LM:['鐳雕','Laser Marking'], HT:['熱處理','Heat Treatment'], LK:['測漏','Leak Test'], IM:['射包','Insert Molding'], EP:['電鍍','Electroplating'], ED:['電著','E-coating'], AN:['陽極','Anodizing'], IP:['含浸','Impregnation'], CT:['皮膜','Coating'], PT:['烤漆','Painting'], AS:['組立','Assembly'], PK:['包裝','Packing'], DB:['毛邊','Deburring'] };
+function stName(code){ if(!code) return ''; if(code.indexOf('+')>=0) return code.split('+').map(stName).join('＋'); var s=STATIONS[code]; return s ? s[0] : code; }
+function stEn(code){ if(!code) return ''; if(code.indexOf('+')>=0) return code.split('+').map(stEn).join(' + '); var s=STATIONS[code]; return s ? s[1] : ''; }
 
 /* ===================================================================== */
 var $ = function(id){ return document.getElementById(id); };
@@ -326,45 +323,61 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){retu
 function p2(n){ return String(n).padStart(2,'0'); }
 function fmtTime(d){ return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes())+':'+p2(d.getSeconds()); }
 function tzLabel(d){ var o=-d.getTimezoneOffset(); return 'UTC'+(o>=0?'+':'-')+Math.floor(Math.abs(o)/60)+(Math.abs(o)%60?':'+p2(Math.abs(o)%60):''); }
-function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2600); }
+function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2800); }
 function ss(k,v){ try{ if(v===undefined) return JSON.parse(sessionStorage.getItem(k)||'null'); if(v===null) sessionStorage.removeItem(k); else sessionStorage.setItem(k,JSON.stringify(v)); }catch(e){ return null; } }
+function arr(v){ if(Array.isArray(v)) return v; if(typeof v==='string'){ try{ var j=JSON.parse(v); return Array.isArray(j)?j:[]; }catch(_){ return v?[v]:[]; } } return []; }
 
-/* ---------------- Supabase Auth（同 OMS v264 流程） ---------------- */
-var auth = { jwt:null, refresh:null, user:null };
-var me = null;      // { name, empId, username, role, factories, bu, demo, access }
-function sbFetch(path, opt){
+/* ---------------- 兩個 Supabase 專案的連線狀態 ---------------- */
+var oms = { jwt:null, refresh:null, user:null };
+var mhr = { jwt:null, refresh:null, uid:null, profile:null, via:'' };
+var me = null;      // { name, empId, factories, demo, access }
+function call(base, key, tok, path, opt){
   opt = opt || {};
-  var h = Object.assign({ 'apikey':SB_KEY, 'Authorization':'Bearer '+(auth.jwt||SB_KEY), 'Accept':'application/json' }, opt.headers||{});
+  var h = Object.assign({ 'apikey':key, 'Accept':'application/json' }, opt.headers||{});
+  if(tok !== false) h['Authorization'] = 'Bearer '+(tok||key);
   if(opt.body) h['Content-Type']='application/json';
-  return fetch(SB_URL+path, { method:opt.method||'GET', headers:h, body:opt.body });
+  return fetch(base+path, { method:opt.method||'GET', headers:h, body:opt.body });
 }
-function signIn(email, pwd){
-  return fetch(SB_URL+'/auth/v1/token?grant_type=password', { method:'POST', headers:{ 'apikey':SB_KEY, 'Content-Type':'application/json' }, body:JSON.stringify({ email:email, password:pwd }) })
+function omsGet(path){ return call(OMS_URL, OMS_KEY, oms.jwt, path); }
+function mhrGet(path){ return call(MHR_URL, MHR_KEY, mhr.jwt, path); }
+function passwordGrant(base, key, email, pwd){
+  return fetch(base+'/auth/v1/token?grant_type=password', { method:'POST', headers:{ 'apikey':key, 'Content-Type':'application/json' }, body:JSON.stringify({ email:email, password:pwd }) })
     .then(function(r){ return r.json().catch(function(){return {};}).then(function(j){
       if(!r.ok){ var e=new Error(j.error_description||j.msg||j.error||('登入失敗 '+r.status)); e.status=r.status; throw e; }
-      auth.jwt=j.access_token; auth.refresh=j.refresh_token; auth.user=j.user; return j;
+      return j;
     }); });
 }
-function refreshToken(){
-  if(!auth.refresh) return Promise.resolve(false);
-  return fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token', { method:'POST', headers:{ 'apikey':SB_KEY, 'Content-Type':'application/json' }, body:JSON.stringify({ refresh_token:auth.refresh }) })
-    .then(function(r){ if(!r.ok) return false; return r.json().then(function(j){ auth.jwt=j.access_token; auth.refresh=j.refresh_token; auth.user=j.user||auth.user; saveSession(); return true; }); })
-    .catch(function(){ return false; });
+function refreshGrant(base, key, rt){
+  return fetch(base+'/auth/v1/token?grant_type=refresh_token', { method:'POST', headers:{ 'apikey':key, 'Content-Type':'application/json' }, body:JSON.stringify({ refresh_token:rt }) })
+    .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
+}
+function refreshAll(){
+  return Promise.all([
+    oms.refresh ? refreshGrant(OMS_URL, OMS_KEY, oms.refresh).then(function(j){ if(j){ oms.jwt=j.access_token; oms.refresh=j.refresh_token; } }) : null,
+    mhr.refresh ? refreshGrant(MHR_URL, MHR_KEY, mhr.refresh).then(function(j){ if(j){ mhr.jwt=j.access_token; mhr.refresh=j.refresh_token; } }) : null
+  ]).then(saveSession);
 }
 var refreshTimer=null;
-function saveSession(){ ss(SESSION_KEY, { a:auth, me:me }); }
+function saveSession(){ ss(SESSION_KEY, { oms:oms, mhr:mhr, me:me }); }
+// 分頁抓取（PostgREST 單次上限 1000 筆，必須帶穩定排序）
+function getAll(getter, path){
+  var out=[], off=0;
+  function page(){
+    return getter(path+(path.indexOf('?')>=0?'&':'?')+'limit=1000&offset='+off).then(function(r){
+      if(!r.ok) return r.text().then(function(t){ throw new Error(path.split('?')[0]+'：'+r.status+' '+t.slice(0,120)); });
+      return r.json();
+    }).then(function(rows){ out=out.concat(rows); if(rows.length===1000){ off+=1000; return page(); } return out; });
+  }
+  return page();
+}
 
-/* 工號即時回饋：讀公開精簡在職名單 employees_picker（同 OMS v294-1） */
+/* ---------------- 工號即時回饋（OMS 公開精簡名單 employees_picker） ---------------- */
 var picker = null, pickerLoading = false;
 function loadPicker(){
   if(picker || pickerLoading) return; pickerLoading = true;
-  var all=[], off=0;
-  (function page(){
-    sbFetch('/rest/v1/employees_picker?select=emp_id,name,factory_code&order=emp_id&limit=1000&offset='+off)
-      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-      .then(function(rows){ all=all.concat(rows); if(rows.length===1000){ off+=1000; page(); } else { picker={}; all.forEach(function(e){ picker[String(e.emp_id||'').toUpperCase()]=e; }); onUserInput(); } })
-      .catch(function(){ pickerLoading=false; });
-  })();
+  getAll(function(p){ return call(OMS_URL, OMS_KEY, null, p); }, '/rest/v1/employees_picker?select=emp_id,name,factory_code&order=emp_id')
+    .then(function(all){ picker={}; all.forEach(function(e){ picker[String(e.emp_id||'').toUpperCase()]=e; }); onUserInput(); })
+    .catch(function(){ pickerLoading=false; });
 }
 var hintT=null;
 function onUserInput(){
@@ -380,6 +393,43 @@ function onUserInput(){
 $('lgUser').addEventListener('input', onUserInput);
 $('lgUser').addEventListener('focus', loadPicker);
 
+/* ---------------- 登入：① OMS 驗身分 → ② 同組帳密換 MHR 通行證（只讀工單用） ---------------- */
+function connectMhr(identifier, pwd){
+  // MHR 的 SyncHub 代驗（EF qms-sso-login，system:'MHR'）；不成再試 MHR 本箱密碼
+  return fetch(MHR_URL+'/functions/v1/qms-sso-login', { method:'POST', headers:{ 'apikey':MHR_KEY, 'Content-Type':'application/json' }, body:JSON.stringify({ identifier:identifier, password:pwd, system:'MHR' }) })
+    .then(function(r){ return r.ok ? r.json().catch(function(){return {};}) : {}; })
+    .catch(function(){ return {}; })
+    .then(function(d){
+      if(d && d.mode==='sso' && d.access_token) return { token:d.access_token, refresh:d.refresh_token, uid:(d.user&&d.user.id)||d.uid||null, via:'SyncHub 代驗' };
+      // 本箱密碼：工號 → OMS identity_access 的 email
+      var emailP = identifier.indexOf('@')>=0 ? Promise.resolve(identifier.toLowerCase())
+        : omsGet('/rest/v1/identity_access?select=email&emp_id=ilike.'+encodeURIComponent(identifier)+'&active=eq.true&limit=1')
+            .then(function(r){ return r.ok ? r.json() : []; }).then(function(rows){ return rows && rows[0] && rows[0].email; }).catch(function(){ return null; });
+      return emailP.then(function(email){
+        if(!email) throw new Error('找不到此工號在 MHR 的帳號');
+        return passwordGrant(MHR_URL, MHR_KEY, email, pwd).then(function(j){ return { token:j.access_token, refresh:j.refresh_token, uid:j.user&&j.user.id, via:'MHR 密碼' }; });
+      });
+    })
+    .then(function(t){
+      mhr.jwt=t.token; mhr.refresh=t.refresh; mhr.via=t.via;
+      var uidP = t.uid ? Promise.resolve(t.uid) : call(MHR_URL, MHR_KEY, t.token, '/auth/v1/user').then(function(r){ return r.json(); }).then(function(u){ return u && u.id; });
+      return uidP;
+    })
+    .then(function(uid){
+      mhr.uid = uid;
+      return mhrGet('/rest/v1/mhr_profiles?id=eq.'+encodeURIComponent(uid)+'&select=*&limit=1').then(function(r){ return r.ok ? r.json() : []; });
+    })
+    .then(function(rows){
+      var p = rows && rows[0];
+      if(!p) throw new Error('此帳號沒有 MHR 使用權限');
+      if(p.active===false) throw new Error('此帳號在 MHR 已停用');
+      if(p.can_access_mhr===false) throw new Error('此帳號沒有 MHR 使用權限');
+      mhr.profile = { name:p.name||'', mhr_role:p.mhr_role||'', account_type:p.account_type||'', site_codes:arr(p.site_codes), bu_codes:arr(p.bu_codes) };
+      return true;
+    })
+    .catch(function(e){ mhr={ jwt:null, refresh:null, uid:null, profile:null, via:'', err:e.message||String(e) }; return false; });
+}
+
 $('loginForm').addEventListener('submit', function(e){
   e.preventDefault();
   var id=$('lgUser').value.trim(), pwd=$('lgPwd').value, err=$('lgErr');
@@ -388,25 +438,27 @@ $('loginForm').addEventListener('submit', function(e){
   if(!pwd){ err.textContent='請輸入密碼'; $('lgPwd').focus(); return; }
   var email = id.indexOf('@')>=0 ? id.toLowerCase() : id.toLowerCase()+EMAIL_DOMAIN;
   $('lgBtn').disabled=true; $('lgBtn').textContent='驗證中…';
-  signIn(email,pwd).then(function(){
-    return sbFetch('/rest/v1/synchub_profiles?id=eq.'+encodeURIComponent(auth.user.id)).then(function(r){ return r.ok ? r.json() : []; });
+  passwordGrant(OMS_URL, OMS_KEY, email, pwd).then(function(j){
+    oms.jwt=j.access_token; oms.refresh=j.refresh_token; oms.user=j.user;
+    return omsGet('/rest/v1/synchub_profiles?id=eq.'+encodeURIComponent(j.user.id)).then(function(r){ return r.ok ? r.json() : []; });
   }).then(function(rows){
     var prof = rows && rows[0];
     if(!prof) throw Object.assign(new Error('找不到帳號設定檔，請洽 DTO'),{status:'x'});
     if(prof.active===false) throw Object.assign(new Error('此帳號已停用，請洽 DTO'),{status:'x'});
-    me = { name:prof.name||prof.username, username:prof.username, empId:prof.emp_id||prof.username, role:prof.role||'', factories:prof.factories||[], bu:prof.bu||'', demo:false, access:null };
-    // 系統授權：system_access.systems 是否含 V5（RLS 若不讓一般使用者讀，視為未知）
-    return sbFetch('/rest/v1/system_access?select=systems&emp_id=eq.'+encodeURIComponent(me.empId))
+    me = { name:prof.name||prof.username, empId:prof.emp_id||prof.username, factories:prof.factories||[], demo:false, access:null };
+    return omsGet('/rest/v1/system_access?select=systems&emp_id=eq.'+encodeURIComponent(me.empId))
       .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
       .then(function(sa){
-        if(sa && sa[0]){ var s=sa[0].systems; if(typeof s==='string'){ try{s=JSON.parse(s);}catch(_){s=[];} } me.access = (s||[]).indexOf(SYSTEM_CODE)>=0; }
+        if(sa && sa[0]){ me.access = arr(sa[0].systems).indexOf(SYSTEM_CODE)>=0; }
         if(ENFORCE_SYSTEM_ACCESS && me.access!==true) throw Object.assign(new Error('您尚未取得 V5 系統使用權限，請聯繫 DTO 申請'),{status:'x'});
       });
   }).then(function(){
+    $('lgBtn').textContent='連線 MHR…';
+    return connectMhr(id, pwd);
+  }).then(function(){
     saveSession(); startApp();
-    if(me.access===false) toast('提醒：此帳號尚未開通 V5 權限（prototype 先放行）');
   }).catch(function(ex){
-    auth={jwt:null,refresh:null,user:null}; me=null;
+    oms={jwt:null,refresh:null,user:null}; me=null;
     err.textContent = ex.status===400||ex.status===401 ? '帳號或密碼錯誤；帳號未開通請洽 DTO'
                     : ex.status==='x' ? ex.message
                     : '無法連線至驗證伺服器（'+ex.message+'），可先用示範模式';
@@ -414,129 +466,214 @@ $('loginForm').addEventListener('submit', function(e){
   }).then(function(){ $('lgBtn').disabled=false; $('lgBtn').textContent='登　入'; });
 });
 $('demoBtn').onclick = function(){
-  me = { name:'王小明', username:'A12345', empId:'A12345', role:'operator', factories:['SY'], bu:'', demo:true, access:null };
-  saveSession(); startApp(); toast('示範模式：資料不會寫入資料庫');
+  me = { name:'王小明', empId:'A12345', factories:['SY'], demo:true, access:null };
+  mhr = { jwt:null, refresh:null, uid:null, profile:null, via:'', err:'示範模式' };
+  saveSession(); startApp(); toast('示範模式：使用示範工單，資料不會寫入資料庫');
 };
 $('logoutBtn').onclick = function(){
-  if(auth.jwt){ sbFetch('/auth/v1/logout',{method:'POST'}).catch(function(){}); }
-  auth={jwt:null,refresh:null,user:null}; me=null; ss(SESSION_KEY,null); clearInterval(refreshTimer);
+  if(oms.jwt) call(OMS_URL, OMS_KEY, oms.jwt, '/auth/v1/logout', {method:'POST'}).catch(function(){});
+  if(mhr.jwt) call(MHR_URL, MHR_KEY, mhr.jwt, '/auth/v1/logout', {method:'POST'}).catch(function(){});
+  oms={jwt:null,refresh:null,user:null}; mhr={jwt:null,refresh:null,uid:null,profile:null,via:''}; me=null; ORDERS=[]; dataSrc='';
+  ss(SESSION_KEY,null); clearInterval(refreshTimer);
   $('vApp').hidden=true; $('vLogin').hidden=false; $('lgPwd').value=''; $('lgErr').textContent='';
   history.replaceState(null,'',location.pathname+location.search);
 };
 
+/* ---------------- 工單資料：MHR（唯讀）或示範 ---------------- */
+var ORDERS = [], MACHINES = [], dataSrc = '', dataErr = '', scope = null, VENDORS = [];
+var RECS = {};   // 拍照紀錄（記憶體）：key = 工單號|料號|站序
+function recsOf(o, i){ var k=o.key+'|'+i; return RECS[k] || (RECS[k]=[]); }
+
+function demoOrders(){
+  function mk(no, part, model, cust, name, qty, due, route, os, stages){
+    return { key:no+'|'+part, no:no, part:part, model:model, customer:cust, name:name, qty:qty, due:due, status:'進行中', site:'示範', route:route.map(function(c){ return { code:c, stage:(stages||{})[c]||'', os:(os||[]).indexOf(c)>=0 }; }) };
+  }
+  return [
+    mk('WO-DEMO-0001','DEMO-HSG-01','DEMO-A','示範客戶','示範外殼（組立成品）',500,'2026/10/15',['DC','CN','DB','VB','CT','AS'],['CT']),
+    mk('WO-DEMO-0002','DEMO-BRK-02','DEMO-B','示範客戶','示範支架',1200,'2026/10/20',['DC','CN','GR','BL','PT','PK'],['PT'])
+  ];
+}
+function computeScope(prof, sites){
+  // 照 MHR siteScopeBase()：admin／無限制 → null（全部）；否則展開事業群 → 內部廠區簡稱
+  if(!prof) return null;
+  if(prof.account_type==='admin' || prof.mhr_role==='admin') return null;
+  var codes = prof.site_codes.slice();
+  prof.bu_codes.forEach(function(bu){ sites.forEach(function(x){ if(x && x.bu_code===bu && x.code && codes.indexOf(x.code)<0) codes.push(x.code); }); });
+  if(!codes.length || codes.indexOf('*')>=0) return null;
+  return VENDORS.filter(function(v){ return v.kind!=='out' && v.code && codes.indexOf(v.code)>=0; }).map(function(v){ return v.short; });
+}
+function isOut(short){ return VENDORS.some(function(v){ return v.short===short && v.kind==='out'; }); }
+function orderVisible(site){
+  if(site==='*') return true;
+  if(site) return !scope || isOut(site) || scope.indexOf(site)>=0;
+  return !scope;   // 沒填廠區 → fail-closed（同 MHR ordScopeReadable）
+}
+function loadData(){
+  ORDERS=[]; MACHINES=[]; dataErr='';
+  if(!mhr.jwt){ ORDERS=demoOrders(); dataSrc='demo'; dataErr=mhr.err||''; return Promise.resolve(); }
+  dataSrc='loading'; renderOrders();
+  return Promise.all([
+    getAll(mhrGet, '/rest/v1/mhr_orders?select=*&order=created_at.desc'),
+    getAll(mhrGet, '/rest/v1/mhr_products?select=*&order=created_at.asc'),
+    getAll(mhrGet, '/rest/v1/mhr_machines?select=mach_id,proc,site,line,active&order=site,mach_id').catch(function(){ return []; }),
+    getAll(mhrGet, '/rest/v1/mhr_vendors?select=code,short,kind,active&order=created_at.asc').catch(function(){ return []; }),
+    getAll(mhrGet, '/rest/v1/mhr_sites?select=code,bu_code&active=eq.true&order=code').catch(function(){ return []; })
+  ]).then(function(res){
+    var ords=res[0], prods=res[1];
+    VENDORS = res[3].filter(function(v){ return v.active!==false; });
+    scope = computeScope(mhr.profile, res[4]);
+    var P={}; prods.forEach(function(r){ var p=Object.assign({}, r.extra||{}, r); P[r.part_no]=p; });
+    MACHINES = res[2].filter(function(m){ return m.active!==false; }).map(function(m){ return { id:m.mach_id, proc:arr(m.proc), site:m.site||'', line:m.line||'' }; });
+    ORDERS = ords.filter(function(o){ return !o.void_at; }).map(function(o){
+      var p=P[o.part_no]||{}, site=o.site||p.site||'';
+      var route=arr(p.route), os=arr(p.os), stages=(p.stages&&typeof p.stages==='object')?p.stages:{};
+      return { key:o.no+'|'+o.part_no, no:o.no, part:o.part_no, model:p.model||o.part_no, customer:o.customer||p.customer||'', name:p.name||'',
+        qty:+o.qty||0, unit:o.unit||'PCS', due:o.due_date||'', date:o.date||'', status:o.status||'進行中', site:site, noRoute:!route.length,
+        route:route.map(function(c){ return { code:c, stage:stages[c]||'', os:os.indexOf(c)>=0 }; }) };
+    }).filter(function(o){ return orderVisible(o.site); });
+    dataSrc='mhr';
+  }).catch(function(e){ dataErr=e.message||String(e); ORDERS=demoOrders(); dataSrc='demo'; });
+}
+function machinesFor(code, site){
+  var cs=(code||'').split('+');
+  return MACHINES.filter(function(m){ return m.proc.some(function(p){ return cs.indexOf(p)>=0; }) && (!site || site==='*' || !m.site || m.site===site); });
+}
+
 /* ---------------- 主程式 ---------------- */
 function facLabel(){
+  if(mhr.profile && scope) return scope.length ? scope.join('、') : '未設定廠區';
   var f = me.factories;
-  if(f==='ALL') return '全部廠區';
+  if(f==='ALL' || (mhr.profile && !scope)) return '全部廠區';
   if(!Array.isArray(f) || !f.length) return '未設定廠區';
   return f.map(function(c){ return FACTORY_NAMES[c]||c; }).join('、');
 }
 function startApp(){
   $('vLogin').hidden=true; $('vApp').hidden=false;
   $('uName').innerHTML = esc(me.name)+'（'+esc(me.empId)+'）'+(me.demo?'<span class="demo-tag">示範</span>':'');
-  $('uFac').textContent = facLabel();
-  if(!me.demo){ clearInterval(refreshTimer); refreshTimer=setInterval(refreshToken, 45*60*1000); }
+  $('uFac').textContent = '';
+  if(!me.demo){ clearInterval(refreshTimer); refreshTimer=setInterval(refreshAll, 45*60*1000); }
   go({ v:'orders' }, true);
+  loadData().then(function(){
+    $('uFac').textContent = facLabel();
+    if(me.access===false) toast('提醒：此帳號尚未開通 V5 權限（測試期先放行）');
+    render();
+  });
 }
 
-var state = { v:'orders' }, curOrder=null, curStn=null;
-function findOrder(no){ no=String(no||'').trim().toUpperCase(); for(var i=0;i<ORDERS.length;i++) if(ORDERS[i].wo.toUpperCase()===no) return ORDERS[i]; return null; }
-function ostats(o){ var done=o.route.filter(function(s){return s.records.length;}).length, ng=o.route.some(function(s){return s.records.some(function(r){return r.res==='NG';});}); return {done:done,total:o.route.length,ng:ng}; }
-
-function go(s, replace){
-  state = s;
-  if(replace) history.replaceState(s,''); else history.pushState(s,'');
-  render();
-}
+var state = { v:'orders' }, curOrder=null;
+function findByKey(k){ for(var i=0;i<ORDERS.length;i++) if(ORDERS[i].key===k) return ORDERS[i]; return null; }
+function ostats(o){ var done=0, ng=false; o.route.forEach(function(s,i){ var r=recsOf(o,i); if(r.length) done++; if(r.some(function(x){return x.res==='NG';})) ng=true; }); return {done:done,total:o.route.length,ng:ng}; }
+function go(s, replace){ state = s; if(replace) history.replaceState(s,''); else history.pushState(s,''); render(); }
 window.addEventListener('popstate', function(e){ if(!me) return; closeCam(); closeAll(); state = e.state || {v:'orders'}; render(); });
 document.addEventListener('click', function(e){
   var t=e.target.closest('[data-back]'); if(t){ history.back(); return; }
-  t=e.target.closest('[data-wo]'); if(t){ openOrder(t.getAttribute('data-wo')); return; }
-  t=e.target.closest('[data-stn]'); if(t){ go({ v:'station', wo:curOrder.wo, i:+t.getAttribute('data-stn') }); return; }
-  t=e.target.closest('[data-photo]'); if(t){ var r=curStn.records[+t.getAttribute('data-photo')]; $('lbImg').src=r.src; $('lbTitle').textContent=curStn.station+' · '+r.res; $('lbSub').textContent=r.atText+' · '+r.by; openDlg('lightbox'); return; }
+  t=e.target.closest('[data-key]'); if(t){ go({ v:'order', key:t.getAttribute('data-key') }); return; }
+  t=e.target.closest('[data-stn]'); if(t){ go({ v:'station', key:curOrder.key, i:+t.getAttribute('data-stn') }); return; }
+  t=e.target.closest('[data-photo]'); if(t){ var r=recsOf(curOrder,state.i)[+t.getAttribute('data-photo')]; $('lbImg').src=r.src; $('lbTitle').textContent=stName(curOrder.route[state.i].code)+' · '+r.res; $('lbSub').textContent=r.atText+' · '+r.by; openDlg('lightbox'); return; }
   t=e.target.closest('[data-close]'); if(t){ closeDlg(t.getAttribute('data-close')); return; }
   t=e.target.closest('.scrim'); if(t && e.target===t){ closeDlg(t.id); }
 });
-function openOrder(no){
-  var o=findOrder(no);
-  if(!o){ $('woErr').textContent='MHR 查無工單「'+no+'」，請確認工單號'; return; }
-  $('woErr').textContent=''; go({ v:'order', wo:o.wo });
+$('showDone').addEventListener('change', function(){ renderOrders(); });
+
+function lookup(no){
+  no=String(no||'').trim().toUpperCase(); if(!no) return;
+  var hits=ORDERS.filter(function(o){ return String(o.no).toUpperCase()===no; });
+  if(!hits.length) hits=ORDERS.filter(function(o){ return String(o.no).toUpperCase().indexOf(no)>=0; });
+  if(!hits.length){ $('woErr').textContent = dataSrc==='mhr' ? 'MHR 查無工單「'+no+'」（或不在你的廠區範圍）' : '查無工單「'+no+'」'; return; }
+  $('woErr').textContent='';
+  if(hits.length===1){ go({ v:'order', key:hits[0].key }); return; }
+  // 同一工單多個料號（MHR 工單主鍵＝工單號＋料號）→ 列出讓使用者選
+  $('showDone').checked = hits.some(function(o){ return o.status==='完成'; }) || $('showDone').checked;
+  renderOrders(hits); toast('此工單有 '+hits.length+' 個料號，請選擇');
 }
 
 function render(){
   ['vOrders','vOrder','vStation'].forEach(function(id){ $(id).hidden=true; });
   window.scrollTo(0,0);
-  if(state.v==='order' || state.v==='station'){ curOrder=findOrder(state.wo); if(!curOrder){ state={v:'orders'}; } }
+  if(state.v==='order' || state.v==='station'){ curOrder=findByKey(state.key); if(!curOrder){ if(dataSrc==='loading'){ $('vOrders').hidden=false; return; } state={v:'orders'}; } }
   if(state.v==='orders') return renderOrders();
   if(state.v==='order') return renderOrder();
-  if(state.v==='station'){ curStn=curOrder.route[state.i]; if(!curStn){ state={v:'order',wo:curOrder.wo}; return renderOrder(); } return renderStation(); }
+  if(state.v==='station'){ if(!curOrder.route[state.i]){ state={v:'order',key:curOrder.key}; return renderOrder(); } return renderStation(); }
 }
-function badgeFor(st){
+function badgeFor(o, st){
+  if(o.status==='完成') return '<span class="badge b-wait">MHR 已完成</span>';
   if(st.ng) return '<span class="badge b-bad">有異常</span>';
-  if(st.done===st.total) return '<span class="badge b-ok">全站已記錄</span>';
+  if(st.total && st.done===st.total) return '<span class="badge b-ok">全站已記錄</span>';
   if(st.done) return '<span class="badge b-warn">記錄中</span>';
   return '<span class="badge b-wait">未開始</span>';
 }
-function renderOrders(){
+function renderOrders(only){
   $('vOrders').hidden=false;
-  $('listSrc').textContent = 'MHR · 示範資料';
-  $('woList').innerHTML = ORDERS.map(function(o){
+  var b=$('srcBanner');
+  if(dataSrc==='loading'){ b.hidden=false; b.className='banner ok'; b.textContent='正在從 MHR 讀取工單…'; }
+  else if(dataSrc==='mhr'){ b.hidden=false; b.className='banner ok'; b.textContent='已連線 MHR（'+mhr.via+'，唯讀）· 拍照紀錄目前只存在本機瀏覽器，重新整理會清空'; }
+  else { b.hidden=false; b.className='banner warn'; b.textContent='未連上 MHR，以下為示範工單'+(dataErr&&dataErr!=='示範模式'?'（原因：'+dataErr+'）':''); }
+  $('listSrc').textContent = dataSrc==='mhr' ? 'MHR · '+ORDERS.length+' 筆' : dataSrc==='demo' ? '示範資料' : '';
+  if(dataSrc==='loading'){ $('woList').innerHTML='<p class="empty">載入中…</p>'; return; }
+  var showDone=$('showDone').checked;
+  var list=(only||ORDERS).filter(function(o){ return showDone || o.status!=='完成'; });
+  $('hList').textContent = only ? '工單「'+only[0].no+'」的料號' : (showDone?'本廠區工單':'本廠區進行中工單');
+  $('woList').innerHTML = list.length ? list.map(function(o){
     var s=ostats(o);
-    return '<button class="wo" type="button" data-wo="'+esc(o.wo)+'">'+
-      '<span class="r1"><span class="no">'+esc(o.wo)+'</span>'+badgeFor(s)+'</span>'+
-      '<span class="meta">料號 '+esc(o.part)+' · 批號 '+esc(o.lot)+' · 數量 '+o.qty+'</span>'+
-      '<span class="prog"><span class="bar"><i style="width:'+(s.done/s.total*100)+'%"></i></span><span class="meta" style="white-space:nowrap">'+s.done+'/'+s.total+' 站</span></span>'+
+    return '<button class="wo" type="button" data-key="'+esc(o.key)+'">'+
+      '<span class="r1"><span class="no">'+esc(o.no)+'</span>'+badgeFor(o,s)+'</span>'+
+      '<span class="meta">機種 '+esc(o.model)+(o.part!==o.model?' · 料號 '+esc(o.part):'')+' · '+esc(o.customer||'—')+' · 數量 '+o.qty+'</span>'+
+      (o.name?'<span class="meta">'+esc(o.name)+'</span>':'')+
+      (o.noRoute?'<span class="meta" style="color:var(--bad)">此機種在 MHR 尚未設定製程路線</span>':
+      '<span class="prog"><span class="bar"><i style="width:'+(s.total?s.done/s.total*100:0)+'%"></i></span><span class="meta" style="white-space:nowrap">'+s.done+'/'+s.total+' 站</span></span>')+
     '</button>';
-  }).join('');
+  }).join('') : '<p class="empty">'+(dataSrc==='mhr'?'你的廠區範圍內目前沒有進行中的工單。':'沒有工單。')+'</p>';
 }
 function renderOrder(){
   $('vOrder').hidden=false;
   var o=curOrder, s=ostats(o);
-  $('oTitle').textContent='工單 '+o.wo; $('oBadge').innerHTML=badgeFor(s);
-  $('oInfo').innerHTML=[['料號',o.part],['機種',o.model],['批號',o.lot],['數量',o.qty],['廠區',FACTORY_NAMES[o.factory]||o.factory],['預計完工',o.due]].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
-  $('oBar').style.width=(s.done/s.total*100)+'%'; $('oProg').textContent=s.done+'/'+s.total+' 站已記錄';
-  $('route').innerHTML = o.route.map(function(x,i){
-    var n=x.records.length, ng=x.records.some(function(r){return r.res==='NG';});
+  $('oTitle').textContent='工單 '+o.no; $('oBadge').innerHTML=badgeFor(o,s);
+  $('oInfo').innerHTML=[['機種',o.model],['料號',o.part],['品名',o.name||'—'],['客戶',o.customer||'—'],['數量',o.qty+' '+(o.unit||'PCS')],['廠區',o.site==='*'?'不限':(o.site||'—')],['交期',o.due||'—'],['MHR 狀態',o.status]].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
+  $('oBar').style.width=(s.total?s.done/s.total*100:0)+'%'; $('oProg').textContent=s.done+'/'+s.total+' 站已記錄';
+  $('route').innerHTML = o.route.length ? o.route.map(function(x,i){
+    var rs=recsOf(o,i), n=rs.length, ng=rs.some(function(r){return r.res==='NG';});
     var b = ng ? '<span class="badge b-bad">異常</span>' : n ? '<span class="badge b-ok">已記錄 '+n+'</span>' : '<span class="badge b-wait">未記錄</span>';
     return '<li><span class="dot'+(n?' done':'')+'" aria-hidden="true">'+(i+1)+'</span>'+
-      '<button class="stn" type="button" data-stn="'+i+'"><span class="main"><span class="nm">'+esc(x.station)+'</span>'+
-      '<span class="meta">站序 '+x.seq+' · 設備 '+esc(x.equip)+' · 治具 '+esc(x.fixture)+' · 模具 '+esc(x.mold)+'</span></span>'+b+
+      '<button class="stn" type="button" data-stn="'+i+'"><span class="main"><span class="nm">'+esc(stName(x.code))+' <span class="meta" style="font-weight:400">'+esc(stEn(x.code))+'</span></span>'+
+      '<span class="meta">'+esc(x.code)+(x.stage?' · 階段料號 '+esc(x.stage):'')+(x.os?' · <b style="color:var(--warn)">委外</b>':'')+'</span></span>'+b+
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></li>';
-  }).join('');
+  }).join('') : '<p class="empty">此機種在 MHR 尚未設定製程路線，請先到 MHR「產品 / BOM」設定。</p>';
 }
 function renderStation(){
   $('vStation').hidden=false;
-  var x=curStn, o=curOrder, n=x.records.length, ng=x.records.some(function(r){return r.res==='NG';});
-  $('sBackLbl').textContent='工單 '+o.wo;
-  $('sTitle').textContent=(state.i+1)+'. '+x.station;
+  var o=curOrder, x=o.route[state.i], rs=recsOf(o,state.i), n=rs.length, ng=rs.some(function(r){return r.res==='NG';});
+  var ms=machinesFor(x.code, o.site);
+  $('sBackLbl').textContent='工單 '+o.no;
+  $('sTitle').textContent=(state.i+1)+'. '+stName(x.code);
   $('sBadge').innerHTML = ng ? '<span class="badge b-bad">異常</span>' : n ? '<span class="badge b-ok">已記錄 '+n+'</span>' : '<span class="badge b-wait">未記錄</span>';
-  $('sInfo').innerHTML=[['工單',o.wo],['料號',o.part],['站序',x.seq],['設備',x.equip],['治具',x.fixture],['模具',x.mold]].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
-  $('recs').innerHTML = n ? x.records.slice().reverse().map(function(r){
-    var idx=x.records.indexOf(r);
+  $('sInfo').innerHTML=[['工單',o.no],['機種／料號',o.model+(o.part!==o.model?' / '+o.part:'')],['製程',stName(x.code)+'（'+x.code+'）'],['階段料號',x.stage||'—'],['內製／委外',x.os?'委外':'廠內'],['可用設備',ms.length?ms.map(function(m){return m.id;}).join('、'):'—']].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
+  $('recs').innerHTML = n ? rs.slice().reverse().map(function(r){
+    var idx=rs.indexOf(r);
     return '<div class="rec"><button class="ph" type="button" data-photo="'+idx+'" aria-label="放大照片"><img src="'+r.src+'" alt=""></button>'+
       '<div class="tx"><div>'+(r.res==='NG'?'<span class="badge b-bad">異常 NG</span>':'<span class="badge b-ok">正常 OK</span>')+'</div>'+
       '<div><b>'+esc(r.atText)+'</b> <span class="meta">'+esc(r.tz)+'</span></div>'+
-      '<div class="meta">'+esc(r.by)+'（'+esc(r.empId)+'）</div>'+
+      '<div class="meta">'+esc(r.by)+'（'+esc(r.empId)+'）'+(r.machine?' · 設備 '+esc(r.machine):'')+'</div>'+
       (r.note?'<div>'+esc(r.note)+'</div>':'')+
       '<div class="hash">SHA-256 '+esc(r.hash)+'</div></div></div>';
   }).join('') : '<p class="empty">此工站尚無紀錄。按上方「拍照紀錄」開啟相機。</p>';
 }
 
 /* ---------------- 工單號帶入 ---------------- */
-$('searchForm').addEventListener('submit', function(e){ e.preventDefault(); var v=$('woInput').value.trim(); if(!v){ $('woErr').textContent='請輸入工單號'; return; } openOrder(v); });
+$('searchForm').addEventListener('submit', function(e){ e.preventDefault(); var v=$('woInput').value.trim(); if(!v){ $('woErr').textContent='請輸入工單號'; return; } if(dataSrc==='loading'){ $('woErr').textContent='工單還在載入中，請稍候'; return; } lookup(v); });
 
 /* ---------------- 網頁內相機（拍攝當下時間由程式寫入，無相簿上傳） ---------------- */
 var camStream=null, clockT=null, shot=null;
 $('shootBtn').onclick = openCam;
 $('camClose').onclick = function(){ closeCam(); };
+function curStation(){ return curOrder.route[state.i]; }
 function openCam(){
   shot=null; $('cam').classList.add('open'); document.body.style.overflow='hidden';
-  $('camTitle').textContent = (state.i+1)+'. '+curStn.station;
-  $('camSub').textContent = '工單 '+curOrder.wo+' · '+me.name+'（'+me.empId+'）';
+  $('camTitle').textContent = (state.i+1)+'. '+stName(curStation().code);
+  $('camSub').textContent = '工單 '+curOrder.no+' · '+me.name+'（'+me.empId+'）';
   $('camShot').hidden=true; $('camVideo').hidden=false; $('review').hidden=true; $('camBot').hidden=false;
   $('shutter').disabled=true; $('camMsg').textContent='正在開啟相機…';
   tickClock(); clockT=setInterval(tickClock,1000);
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camFail('此瀏覽器或開啟方式無法使用相機。<br>請以 https 網址開啟（正式部署後即可）。'); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camFail('此瀏覽器或開啟方式無法使用相機。<br>請以 https 網址開啟。'); return; }
   navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1440} }, audio:false })
     .then(function(s){
       if(!$('cam').classList.contains('open')){ s.getTracks().forEach(function(t){t.stop();}); return; }
@@ -553,15 +690,14 @@ function closeCam(){ if(!$('cam').classList.contains('open')) return; stopStream
 
 $('shutter').onclick = function(){ capture(false); };
 function capture(fake){
-  var d = new Date();   // 拍攝當下時間（正式版另以伺服器 now() 收件時間交叉比對）
-  var c=$('cv'), v=$('camVideo'), w, h, ctx;
+  var d = new Date();
+  var x=curStation(), c=$('cv'), v=$('camVideo'), w, h, ctx;
   if(fake){ w=1600; h=1200; } else { w=v.videoWidth; h=v.videoHeight; }
   c.width=w; c.height=h; ctx=c.getContext('2d');
   if(fake){ var g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'#5a6b80'); g.addColorStop(1,'#2a3644'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='bold 72px sans-serif'; ctx.textAlign='center'; ctx.fillText('TEST IMAGE', w/2, h/2); ctx.textAlign='left'; }
   else ctx.drawImage(v,0,0,w,h);
-  // 浮水印：時間／人員／工單／站別直接燒進影像
   var fs=Math.max(18,Math.round(w/52)), pad=Math.round(fs*0.7), lh=Math.round(fs*1.35);
-  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.wo+' · '+(state.i+1)+'. '+curStn.station+' · 設備 '+curStn.equip, me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
+  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.no+' · '+curOrder.model+' · '+(state.i+1)+'. '+stName(x.code)+'('+x.code+')', me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
   var bh=pad*2+lh*lines.length;
   ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(0,h-bh,w,bh);
   ctx.fillStyle='#fff'; ctx.font='600 '+fs+'px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline='top';
@@ -574,6 +710,10 @@ function capture(fake){
       stopStream();
       $('camVideo').hidden=true; $('camShot').src=shot.src; $('camShot').hidden=false; $('camMsg').textContent='';
       $('camBot').hidden=true; $('review').hidden=false; $('review').reset(); $('rvMeta').textContent='拍攝 '+shot.atText+' '+shot.tz;
+      var ms=machinesFor(x.code, curOrder.site);
+      $('rvMachWrap').hidden = !ms.length;
+      $('rvMach').innerHTML = '<option value="">（不指定）</option>'+ms.map(function(m){ return '<option>'+esc(m.id)+'</option>'; }).join('');
+      if(ms.length===1) $('rvMach').value=ms[0].id;
     };
     fr.readAsDataURL(blob);
   },'image/jpeg',0.88);
@@ -588,9 +728,9 @@ $('retake').onclick = function(){ shot=null; openCam(); };
 $('review').addEventListener('submit', function(e){
   e.preventDefault(); if(!shot) return;
   var res=(document.querySelector('input[name="res"]:checked')||{}).value||'OK';
-  curStn.records.push({ src:shot.src, at:shot.at, atText:shot.atText, tz:shot.tz, hash:shot.hash, size:shot.size, res:res, note:$('rvNote').value.trim(), by:me.name, empId:me.empId });
-  // 正式版：上傳影像至 Storage（台北 NAS → Supabase 備份），寫入紀錄表（server now() 為收件時間）
-  shot=null; closeCam(); renderStation(); toast('已記錄：'+curStn.station+'（'+res+'）');
+  recsOf(curOrder,state.i).push({ src:shot.src, at:shot.at, atText:shot.atText, tz:shot.tz, hash:shot.hash, size:shot.size, res:res, note:$('rvNote').value.trim(), machine:$('rvMach').value||'', by:me.name, empId:me.empId });
+  // 正式版：影像上傳 Storage（NAS→Supabase 備份）並寫入 V5 紀錄表（server now() 為收件時間）
+  shot=null; closeCam(); renderStation(); toast('已記錄：'+stName(curStation().code)+'（'+res+'）');
 });
 
 /* ---------------- 掃描工單條碼 ---------------- */
@@ -612,8 +752,8 @@ function loop(){
   var t=performance.now(); if(t-lastT<250) return; lastT=t; busy=true;
   var p = detector ? detector.detect(v).then(function(r){ return r&&r[0]?r[0].rawValue:null; }).catch(function(){ return jsqr(v); }) : Promise.resolve(jsqr(v));
   p.then(function(txt){ busy=false; if(!txt||!scanStream) return;
-    var m = String(txt).match(/WO[\w-]+/i); var no = m ? m[0] : String(txt).trim();
-    closeDlg('scanDlg'); $('woInput').value=no.toUpperCase(); openOrder(no);
+    var no=String(txt).trim();
+    closeDlg('scanDlg'); $('woInput').value=no.toUpperCase(); lookup(no);
   });
 }
 function jsqr(v){
@@ -633,7 +773,7 @@ document.addEventListener('keydown', function(e){ if(e.key!=='Escape') return; i
 /* ---------------- 啟動：沿用本分頁已登入的 session ---------------- */
 $('verTag').textContent=' · '+APP_VER;
 var saved = ss(SESSION_KEY);
-if(saved && saved.me){ auth = saved.a || auth; me = saved.me; if(!me.demo && auth.refresh) refreshToken(); startApp(); }
+if(saved && saved.me){ oms = saved.oms || oms; mhr = saved.mhr || mhr; me = saved.me; if(me.demo) startApp(); else refreshAll().then(startApp, startApp); }
 })();
 </script>
 </body>
