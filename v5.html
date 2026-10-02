@@ -98,6 +98,9 @@
   /* station */
   .shoot{display:flex;align-items:center;justify-content:center;gap:10px;min-height:64px;border:none;border-radius:10px;background:var(--navy);color:#fff;font-size:17px;font-weight:700;width:100%}
   .shoot:hover{background:var(--navy-2)}
+  .shoot:disabled{opacity:.45;cursor:default}
+  .lotrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:13px}
+  .lotrow b{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--navy)}
   .recs{display:flex;flex-direction:column;gap:10px}
   .rec{display:flex;gap:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff}
   .rec button.ph{flex-shrink:0;width:96px;height:96px;padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#000}
@@ -219,6 +222,10 @@
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="hRoute">工站途程</h2><span class="sub">MHR 製程路線 · 點選工站拍照紀錄</span></div>
       <ol class="route" id="route"></ol>
     </section>
+    <section class="panel" aria-labelledby="hLots">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><h2 id="hLots">批號</h2><span class="sub">MHR 箱號資料 · 目前到達的最後一站</span></div>
+      <div class="wo-list" id="lots"></div>
+    </section>
   </main>
 
   <!-- 工站 → 拍照紀錄 -->
@@ -228,6 +235,10 @@
     <section class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 id="sTitle"></h2><span id="sBadge"></span></div>
       <dl class="info" id="sInfo"></dl>
+    </section>
+    <section class="panel">
+      <label class="f">批號（拍照前先選）<select id="lotSel"></select></label>
+      <div class="sub" id="lotHint"></div>
     </section>
     <button class="shoot" type="button" id="shootBtn">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>拍照紀錄</button>
@@ -300,7 +311,7 @@
  *  V5 製程影像追溯 — MHR 附屬（測試版）
  *  身分：SyncHub/OMS（Supabase drfq…）  工單／途程：MHR（Supabase vwus…，唯讀）
  * ===================================================================== */
-var APP_VER = 'T0.4';
+var APP_VER = 'T0.5';
 // OMS / SyncHub（身分）
 var OMS_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
 var OMS_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
@@ -480,14 +491,18 @@ $('logoutBtn').onclick = function(){
 };
 
 /* ---------------- 工單資料：MHR（唯讀）或示範 ---------------- */
-var ORDERS = [], MACHINES = [], dataSrc = '', dataErr = '', scope = null, VENDORS = [];
+var ORDERS = [], MACHINES = [], dataSrc = '', dataErr = '', scope = null, VENDORS = [], lotErr = '';
+var curLot = {};   // 每個工站目前選的批號：key = 工單key|站序
 var RECS = {};   // 拍照紀錄（記憶體）：key = 工單號|料號|站序
 function recsOf(o, i){ var k=o.key+'|'+i; return RECS[k] || (RECS[k]=[]); }
 
 function demoOrders(){
   function mk(no, part, model, cust, name, qty, due, route, os, stages){
-    return { key:no+'|'+part, no:no, part:part, model:model, customer:cust, name:name, qty:qty, due:due, status:'進行中', site:'示範', route:route.map(function(c){ return { code:c, stage:(stages||{})[c]||'', os:(os||[]).indexOf(c)>=0 }; }) };
+    var o={ key:no+'|'+part, no:no, part:part, model:model, customer:cust, name:name, qty:qty, due:due, status:'進行中', site:'示範', route:route.map(function(c){ return { code:c, stage:(stages||{})[c]||'', os:(os||[]).indexOf(c)>=0 }; }) };
+    o.lots = [ mkLot(o, model+'_260901_A_DC01_01', route.slice(0,3), 4), mkLot(o, model+'_260905_A_DC02_01', route.slice(0,1), 2) ];
+    return o;
   }
+  function mkLot(o, lot, codes, boxes){ var L={ lot:lot, codes:{}, boxes:boxes, first:'' }; codes.forEach(function(c){ L.codes[c]=boxes; }); return L; }
   return [
     mk('WO-DEMO-0001','DEMO-HSG-01','DEMO-A','示範客戶','示範外殼（組立成品）',500,'2026/10/15',['DC','CN','DB','VB','CT','AS'],['CT']),
     mk('WO-DEMO-0002','DEMO-BRK-02','DEMO-B','示範客戶','示範支架',1200,'2026/10/20',['DC','CN','GR','BL','PT','PK'],['PT'])
@@ -517,7 +532,8 @@ function loadData(){
     getAll(mhrGet, '/rest/v1/mhr_products?select=*&order=created_at.asc'),
     getAll(mhrGet, '/rest/v1/mhr_machines?select=mach_id,proc,site,line,active&order=site,mach_id').catch(function(){ return []; }),
     getAll(mhrGet, '/rest/v1/mhr_vendors?select=code,short,kind,active&order=created_at.asc').catch(function(){ return []; }),
-    getAll(mhrGet, '/rest/v1/mhr_sites?select=code,bu_code&active=eq.true&order=code').catch(function(){ return []; })
+    getAll(mhrGet, '/rest/v1/mhr_sites?select=code,bu_code&active=eq.true&order=code').catch(function(){ return []; }),
+    getAll(mhrGet, '/rest/v1/mhr_containers?select=cid,lot,order_no,part_no,process_code,void_at,created_at&order=created_at.asc').catch(function(e){ lotErr=e.message; return []; })
   ]).then(function(res){
     var ords=res[0], prods=res[1];
     VENDORS = res[3].filter(function(v){ return v.active!==false; });
@@ -531,8 +547,24 @@ function loadData(){
         qty:+o.qty||0, unit:o.unit||'PCS', due:o.due_date||'', date:o.date||'', status:o.status||'進行中', site:site, noRoute:!route.length,
         route:route.map(function(c){ return { code:c, stage:stages[c]||'', os:os.indexOf(c)>=0 }; }) };
     }).filter(function(o){ return orderVisible(o.site); });
+    // 批號：由箱號資料彙整（排除作廢箱）。key = 工單號|料號
+    var LM={};
+    res[5].forEach(function(c){
+      if(c.void_at || !c.lot) return;
+      var k=c.order_no+'|'+c.part_no, m=LM[k]||(LM[k]={}), L=m[c.lot]||(m[c.lot]={ lot:c.lot, codes:{}, boxes:0, first:c.created_at||'' });
+      L.boxes++; if(c.process_code) L.codes[c.process_code]=(L.codes[c.process_code]||0)+1;
+    });
+    ORDERS.forEach(function(o){ var m=LM[o.key]||{}; o.lots=Object.keys(m).map(function(k){ return m[k]; }).sort(function(a,b){ return a.first<b.first?-1:1; }); });
     dataSrc='mhr';
   }).catch(function(e){ dataErr=e.message||String(e); ORDERS=demoOrders(); dataSrc='demo'; });
+}
+function lotReach(o, L){ var mx=-1; o.route.forEach(function(x,i){ if(L.codes[x.code]) mx=i; }); return mx; }
+function lotStatus(o, L, i){
+  var here=!!L.codes[o.route[i].code], mx=lotReach(o,L);
+  if(here && mx===i) return { t:'在本站', w:0, n:L.codes[o.route[i].code] };
+  if(here) return { t:'已過本站', w:1, n:L.codes[o.route[i].code] };
+  if(mx<i) return { t:'尚未到站', w:2, n:0 };
+  return { t:'未經本站', w:3, n:0 };
 }
 function machinesFor(code, site){
   var cs=(code||'').split('+');
@@ -619,6 +651,7 @@ function renderOrders(only){
       '<span class="r1"><span class="no">'+esc(o.no)+'</span>'+badgeFor(o,s)+'</span>'+
       '<span class="meta">機種 '+esc(o.model)+(o.part!==o.model?' · 料號 '+esc(o.part):'')+' · '+esc(o.customer||'—')+' · 數量 '+o.qty+'</span>'+
       (o.name?'<span class="meta">'+esc(o.name)+'</span>':'')+
+      '<span class="meta">批號 '+((o.lots||[]).length)+' 個</span>'+
       (o.noRoute?'<span class="meta" style="color:var(--bad)">此機種在 MHR 尚未設定製程路線</span>':
       '<span class="prog"><span class="bar"><i style="width:'+(s.total?s.done/s.total*100:0)+'%"></i></span><span class="meta" style="white-space:nowrap">'+s.done+'/'+s.total+' 站</span></span>')+
     '</button>';
@@ -638,12 +671,28 @@ function renderOrder(){
       '<span class="meta">'+esc(x.code)+(x.stage?' · 階段料號 '+esc(x.stage):'')+(x.os?' · <b style="color:var(--warn)">委外</b>':'')+'</span></span>'+b+
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button></li>';
   }).join('') : '<p class="empty">此機種在 MHR 尚未設定製程路線，請先到 MHR「產品 / BOM」設定。</p>';
+  var lots=o.lots||[];
+  $('lots').innerHTML = lots.length ? lots.map(function(L){
+    var mx=lotReach(o,L), photos=0; o.route.forEach(function(x,i){ photos+=recsOf(o,i).filter(function(r){ return r.lot===L.lot; }).length; });
+    return '<div class="lotrow"><span><b>'+esc(L.lot)+'</b><br><span class="meta">'+L.boxes+' 箱 · 最後一站：'+(mx>=0?esc(stName(o.route[mx].code)):'—')+'</span></span>'+
+      (photos?'<span class="badge b-ok">照片 '+photos+'</span>':'<span class="badge b-wait">尚無照片</span>')+'</div>';
+  }).join('') : '<p class="empty">'+(lotErr?'讀取 MHR 箱號失敗：'+esc(lotErr):'MHR 尚無此工單的箱號／批號（首站還沒建箱）。')+'</p>';
 }
 function renderStation(){
   $('vStation').hidden=false;
   var o=curOrder, x=o.route[state.i], rs=recsOf(o,state.i), n=rs.length, ng=rs.some(function(r){return r.res==='NG';});
   var ms=machinesFor(x.code, o.site);
   $('sBackLbl').textContent='工單 '+o.no;
+  var ck=o.key+'|'+state.i, lots=(o.lots||[]).map(function(L){ return { L:L, s:lotStatus(o,L,state.i) }; }).sort(function(a,b){ return a.s.w-b.s.w || (a.L.first<b.L.first?-1:1); });
+  if(curLot[ck]===undefined){ var here=lots.filter(function(x){ return x.s.w===0; }); curLot[ck] = here.length===1 ? here[0].L.lot : ''; }
+  $('lotSel').innerHTML = '<option value="">請選擇批號</option>'+lots.map(function(x){ return '<option value="'+esc(x.L.lot)+'">'+esc(x.L.lot)+'　（'+x.s.t+(x.s.n?' '+x.s.n+' 箱':'')+'）</option>'; }).join('')+'<option value="__none__">（MHR 尚無對應批號）</option>';
+  $('lotSel').value = curLot[ck];
+  $('lotSel').onchange = function(){ curLot[ck]=this.value; lotUI(); };
+  function lotUI(){
+    var v=$('lotSel').value; $('shootBtn').disabled=!v;
+    $('lotHint').textContent = !lots.length ? 'MHR 目前沒有此工單的批號，可選「尚無對應批號」先拍照。' : !v ? '請先選擇這次拍照的批號（在本站的批號排在最前面）。' : v==='__none__' ? '此筆紀錄不會關聯到 MHR 批號。' : '照片會記錄到批號 '+v+'。';
+  }
+  lotUI();
   $('sTitle').textContent=(state.i+1)+'. '+stName(x.code);
   $('sBadge').innerHTML = ng ? '<span class="badge b-bad">異常</span>' : n ? '<span class="badge b-ok">已記錄 '+n+'</span>' : '<span class="badge b-wait">未記錄</span>';
   $('sInfo').innerHTML=[['工單',o.no],['機種／料號',o.model+(o.part!==o.model?' / '+o.part:'')],['製程',stName(x.code)+'（'+x.code+'）'],['階段料號',x.stage||'—'],['內製／委外',x.os?'委外':'廠內'],['可用設備',ms.length?ms.map(function(m){return m.id;}).join('、'):'—']].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
@@ -652,6 +701,7 @@ function renderStation(){
     return '<div class="rec"><button class="ph" type="button" data-photo="'+idx+'" aria-label="放大照片"><img src="'+r.src+'" alt=""></button>'+
       '<div class="tx"><div>'+(r.res==='NG'?'<span class="badge b-bad">異常 NG</span>':'<span class="badge b-ok">正常 OK</span>')+'</div>'+
       '<div><b>'+esc(r.atText)+'</b> <span class="meta">'+esc(r.tz)+'</span></div>'+
+      '<div><b style="font-family:ui-monospace,Menlo,Consolas,monospace">'+esc(r.lot||'未對應批號')+'</b></div>'+
       '<div class="meta">'+esc(r.by)+'（'+esc(r.empId)+'）'+(r.machine?' · 設備 '+esc(r.machine):'')+'</div>'+
       (r.note?'<div>'+esc(r.note)+'</div>':'')+
       '<div class="hash">SHA-256 '+esc(r.hash)+'</div></div></div>';
@@ -663,13 +713,14 @@ $('searchForm').addEventListener('submit', function(e){ e.preventDefault(); var 
 
 /* ---------------- 網頁內相機（拍攝當下時間由程式寫入，無相簿上傳） ---------------- */
 var camStream=null, clockT=null, shot=null;
-$('shootBtn').onclick = openCam;
+$('shootBtn').onclick = function(){ if(!$('lotSel').value){ toast('請先選擇批號'); return; } openCam(); };
 $('camClose').onclick = function(){ closeCam(); };
 function curStation(){ return curOrder.route[state.i]; }
+function selLot(){ var v=curLot[curOrder.key+'|'+state.i]||''; return v==='__none__' ? '' : v; }
 function openCam(){
   shot=null; $('cam').classList.add('open'); document.body.style.overflow='hidden';
   $('camTitle').textContent = (state.i+1)+'. '+stName(curStation().code);
-  $('camSub').textContent = '工單 '+curOrder.no+' · '+me.name+'（'+me.empId+'）';
+  $('camSub').textContent = '工單 '+curOrder.no+' · 批號 '+(selLot()||'未對應')+' · '+me.name;
   $('camShot').hidden=true; $('camVideo').hidden=false; $('review').hidden=true; $('camBot').hidden=false;
   $('shutter').disabled=true; $('camMsg').textContent='正在開啟相機…';
   tickClock(); clockT=setInterval(tickClock,1000);
@@ -697,7 +748,7 @@ function capture(fake){
   if(fake){ var g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'#5a6b80'); g.addColorStop(1,'#2a3644'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='bold 72px sans-serif'; ctx.textAlign='center'; ctx.fillText('TEST IMAGE', w/2, h/2); ctx.textAlign='left'; }
   else ctx.drawImage(v,0,0,w,h);
   var fs=Math.max(18,Math.round(w/52)), pad=Math.round(fs*0.7), lh=Math.round(fs*1.35);
-  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.no+' · '+curOrder.model+' · '+(state.i+1)+'. '+stName(x.code)+'('+x.code+')', me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
+  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.no+' · 批號 '+(selLot()||'未對應'), curOrder.model+' · '+(state.i+1)+'. '+stName(x.code)+'('+x.code+') · '+me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
   var bh=pad*2+lh*lines.length;
   ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(0,h-bh,w,bh);
   ctx.fillStyle='#fff'; ctx.font='600 '+fs+'px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline='top';
@@ -728,7 +779,7 @@ $('retake').onclick = function(){ shot=null; openCam(); };
 $('review').addEventListener('submit', function(e){
   e.preventDefault(); if(!shot) return;
   var res=(document.querySelector('input[name="res"]:checked')||{}).value||'OK';
-  recsOf(curOrder,state.i).push({ src:shot.src, at:shot.at, atText:shot.atText, tz:shot.tz, hash:shot.hash, size:shot.size, res:res, note:$('rvNote').value.trim(), machine:$('rvMach').value||'', by:me.name, empId:me.empId });
+  recsOf(curOrder,state.i).push({ src:shot.src, at:shot.at, atText:shot.atText, tz:shot.tz, hash:shot.hash, size:shot.size, res:res, lot:selLot(), note:$('rvNote').value.trim(), machine:$('rvMach').value||'', by:me.name, empId:me.empId });
   // 正式版：影像上傳 Storage（NAS→Supabase 備份）並寫入 V5 紀錄表（server now() 為收件時間）
   shot=null; closeCam(); renderStation(); toast('已記錄：'+stName(curStation().code)+'（'+res+'）');
 });
