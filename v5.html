@@ -124,7 +124,25 @@
   .shutter{width:76px;height:76px;border-radius:50%;border:4px solid #fff;background:rgba(255,255,255,.25);padding:0}
   .shutter:active{background:#fff}
   .shutter:disabled{opacity:.4}
-  .review{background:#fff;color:var(--ink);padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow:auto}
+  .review{flex:1;background:#fff;color:var(--ink);padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .cam-bot{flex-direction:column;gap:10px}
+  .cam-ctl{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:420px}
+  .cam-count{width:96px;font-size:14px;font-variant-numeric:tabular-nums}
+  .btn-done{width:96px;height:44px;border:none;border-radius:22px;background:#fff;color:var(--navy);font-size:15px;font-weight:700}
+  .btn-done:disabled{opacity:.35}
+  .strip{display:flex;gap:6px;overflow-x:auto;width:100%;max-width:420px;min-height:0}
+  .strip:empty{display:none}
+  .strip img{width:52px;height:52px;object-fit:cover;border-radius:6px;border:2px solid rgba(255,255,255,.7);flex-shrink:0}
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+  .flash.on{opacity:.8;transition:none}
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+  .shot{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#000}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .shot button{position:absolute;top:4px;right:4px;width:32px;height:32px;border:none;border-radius:50%;background:rgba(10,22,40,.75);color:#fff;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
+  .shot span{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:4px;background:rgba(10,22,40,.75);color:#fff;font-size:11px}
+  .rec .cnt{position:absolute;right:4px;bottom:4px;padding:1px 6px;border-radius:4px;background:rgba(10,22,40,.8);color:#fff;font-size:11px}
+  .rec button.ph{position:relative}
+  .lbgrid{display:flex;flex-direction:column;gap:10px}
   .seg{display:flex;gap:8px}
   .seg label{flex:1}
   .seg input{position:absolute;opacity:0;pointer-events:none}
@@ -237,7 +255,8 @@
       <dl class="info" id="sInfo"></dl>
     </section>
     <section class="panel">
-      <label class="f">批號（拍照前先選）<select id="lotSel"></select></label>
+      <label class="f">批號（必填）<select id="lotSel"></select></label>
+      <label class="f" id="machWrap">設備（必填）<select id="machSel"></select></label>
       <div class="sub" id="lotHint"></div>
     </section>
     <button class="shoot" type="button" id="shootBtn">
@@ -257,25 +276,28 @@
   </div>
   <div class="stage">
     <video id="camVideo" playsinline muted></video>
-    <img id="camShot" alt="剛拍攝的照片" hidden>
     <span class="clock" id="camClock"></span>
+    <div class="flash" id="flash"></div>
     <div class="cam-msg" id="camMsg"></div>
   </div>
   <div class="cam-bot" id="camBot">
-    <button class="shutter" type="button" id="shutter" aria-label="拍照"></button>
+    <div class="strip" id="strip" aria-label="已拍照片"></div>
+    <div class="cam-ctl">
+      <span class="cam-count" id="camCount">0 張</span>
+      <button class="shutter" type="button" id="shutter" aria-label="拍照"></button>
+      <button class="btn-done" type="button" id="doneShots" disabled>完成</button>
+    </div>
   </div>
   <form class="review" id="review" hidden>
-    <div class="meta" id="rvMeta"></div>
-    <label class="f" id="rvMachWrap">設備（選填）<select id="rvMach"></select></label>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="font-size:16px;color:var(--navy)" id="rvTitle">確認照片</b><span class="meta" id="rvMeta"></span></div>
+    <div class="shots" id="shots"></div>
+    <button class="btn-sec" type="button" id="moreShot">＋ 再拍一張</button>
     <div class="seg" role="radiogroup" aria-label="結果判定">
       <label><input type="radio" name="res" value="OK" checked><span class="ok">正常 OK</span></label>
       <label><input type="radio" name="res" value="NG"><span class="ng">異常 NG</span></label>
     </div>
     <label class="f">備註（選填）<textarea id="rvNote" placeholder="例：首件確認、參數畫面、異常說明…"></textarea></label>
-    <div class="row">
-      <button class="btn-sec" type="button" id="retake">重拍</button>
-      <button class="btn-pri" type="submit" id="saveRec">確認上傳</button>
-    </div>
+    <button class="btn-pri" type="submit" id="saveRec">確認上傳</button>
   </form>
 </div>
 
@@ -295,7 +317,7 @@
   <div class="dialog" style="max-width:720px">
     <div class="dhead"><div><h2 id="lbTitle">照片</h2><div class="sub" id="lbSub"></div></div>
       <button class="x" type="button" data-close="lightbox" aria-label="關閉"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg></button></div>
-    <img id="lbImg" alt="">
+    <div class="lbgrid" id="lbImgs"></div>
   </div>
 </div>
 
@@ -311,7 +333,7 @@
  *  V5 製程影像追溯 — MHR 附屬（測試版）
  *  身分：SyncHub/OMS（Supabase drfq…）  工單／途程：MHR（Supabase vwus…，唯讀）
  * ===================================================================== */
-var APP_VER = 'T0.5';
+var APP_VER = 'T0.6';
 // OMS / SyncHub（身分）
 var OMS_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
 var OMS_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
@@ -492,7 +514,7 @@ $('logoutBtn').onclick = function(){
 
 /* ---------------- 工單資料：MHR（唯讀）或示範 ---------------- */
 var ORDERS = [], MACHINES = [], dataSrc = '', dataErr = '', scope = null, VENDORS = [], lotErr = '';
-var curLot = {};   // 每個工站目前選的批號：key = 工單key|站序
+var curLot = {}, curMach = {};   // 每個工站目前選的批號：key = 工單key|站序
 var RECS = {};   // 拍照紀錄（記憶體）：key = 工單號|料號|站序
 function recsOf(o, i){ var k=o.key+'|'+i; return RECS[k] || (RECS[k]=[]); }
 
@@ -596,12 +618,14 @@ var state = { v:'orders' }, curOrder=null;
 function findByKey(k){ for(var i=0;i<ORDERS.length;i++) if(ORDERS[i].key===k) return ORDERS[i]; return null; }
 function ostats(o){ var done=0, ng=false; o.route.forEach(function(s,i){ var r=recsOf(o,i); if(r.length) done++; if(r.some(function(x){return x.res==='NG';})) ng=true; }); return {done:done,total:o.route.length,ng:ng}; }
 function go(s, replace){ state = s; if(replace) history.replaceState(s,''); else history.pushState(s,''); render(); }
-window.addEventListener('popstate', function(e){ if(!me) return; closeCam(); closeAll(); state = e.state || {v:'orders'}; render(); });
+window.addEventListener('popstate', function(e){ if(!me) return; closeCam(true); closeAll(); state = e.state || {v:'orders'}; render(); });
 document.addEventListener('click', function(e){
   var t=e.target.closest('[data-back]'); if(t){ history.back(); return; }
   t=e.target.closest('[data-key]'); if(t){ go({ v:'order', key:t.getAttribute('data-key') }); return; }
   t=e.target.closest('[data-stn]'); if(t){ go({ v:'station', key:curOrder.key, i:+t.getAttribute('data-stn') }); return; }
-  t=e.target.closest('[data-photo]'); if(t){ var r=recsOf(curOrder,state.i)[+t.getAttribute('data-photo')]; $('lbImg').src=r.src; $('lbTitle').textContent=stName(curOrder.route[state.i].code)+' · '+r.res; $('lbSub').textContent=r.atText+' · '+r.by; openDlg('lightbox'); return; }
+  t=e.target.closest('[data-photo]'); if(t){ var r=recsOf(curOrder,state.i)[+t.getAttribute('data-photo')];
+    $('lbImgs').innerHTML=r.photos.map(function(p,k){ return '<figure style="margin:0"><img src="'+p.src+'" alt="照片 '+(k+1)+'" style="width:100%;border-radius:8px;display:block"><figcaption class="meta" style="margin-top:4px">'+(k+1)+'/'+r.photos.length+' · '+esc(p.atText)+' · SHA-256 '+esc(p.hash)+'</figcaption></figure>'; }).join('');
+    $('lbTitle').textContent=stName(curOrder.route[state.i].code)+' · '+(r.lot||'未對應批號')+' · '+r.res; $('lbSub').textContent=r.by+(r.machine?' · 設備 '+r.machine:''); openDlg('lightbox'); return; }
   t=e.target.closest('[data-close]'); if(t){ closeDlg(t.getAttribute('data-close')); return; }
   t=e.target.closest('.scrim'); if(t && e.target===t){ closeDlg(t.id); }
 });
@@ -673,7 +697,7 @@ function renderOrder(){
   }).join('') : '<p class="empty">此機種在 MHR 尚未設定製程路線，請先到 MHR「產品 / BOM」設定。</p>';
   var lots=o.lots||[];
   $('lots').innerHTML = lots.length ? lots.map(function(L){
-    var mx=lotReach(o,L), photos=0; o.route.forEach(function(x,i){ photos+=recsOf(o,i).filter(function(r){ return r.lot===L.lot; }).length; });
+    var mx=lotReach(o,L), photos=0; o.route.forEach(function(x,i){ recsOf(o,i).forEach(function(r){ if(r.lot===L.lot) photos+=r.photos.length; }); });
     return '<div class="lotrow"><span><b>'+esc(L.lot)+'</b><br><span class="meta">'+L.boxes+' 箱 · 最後一站：'+(mx>=0?esc(stName(o.route[mx].code)):'—')+'</span></span>'+
       (photos?'<span class="badge b-ok">照片 '+photos+'</span>':'<span class="badge b-wait">尚無照片</span>')+'</div>';
   }).join('') : '<p class="empty">'+(lotErr?'讀取 MHR 箱號失敗：'+esc(lotErr):'MHR 尚無此工單的箱號／批號（首站還沒建箱）。')+'</p>';
@@ -688,42 +712,59 @@ function renderStation(){
   $('lotSel').innerHTML = '<option value="">請選擇批號</option>'+lots.map(function(x){ return '<option value="'+esc(x.L.lot)+'">'+esc(x.L.lot)+'　（'+x.s.t+(x.s.n?' '+x.s.n+' 箱':'')+'）</option>'; }).join('')+'<option value="__none__">（MHR 尚無對應批號）</option>';
   $('lotSel').value = curLot[ck];
   $('lotSel').onchange = function(){ curLot[ck]=this.value; lotUI(); };
+  var msx=machinesFor(x.code, o.site);
+  if(curMach[ck]===undefined) curMach[ck] = msx.length===1 ? msx[0].id : '';
+  $('machWrap').hidden = !msx.length;
+  $('machSel').innerHTML = '<option value="">請選擇設備</option>'+msx.map(function(m){ return '<option value="'+esc(m.id)+'">'+esc(m.id)+(m.line?'（'+esc(m.line)+'）':'')+'</option>'; }).join('');
+  $('machSel').value = curMach[ck];
+  $('machSel').onchange = function(){ curMach[ck]=this.value; lotUI(); };
   function lotUI(){
-    var v=$('lotSel').value; $('shootBtn').disabled=!v;
-    $('lotHint').textContent = !lots.length ? 'MHR 目前沒有此工單的批號，可選「尚無對應批號」先拍照。' : !v ? '請先選擇這次拍照的批號（在本站的批號排在最前面）。' : v==='__none__' ? '此筆紀錄不會關聯到 MHR 批號。' : '照片會記錄到批號 '+v+'。';
+    var v=$('lotSel').value, m=$('machSel').value, needM=msx.length>0;
+    $('shootBtn').disabled = !v || (needM && !m);
+    $('lotHint').textContent = !v ? (!lots.length ? 'MHR 目前沒有此工單的批號，可選「尚無對應批號」先拍照。' : '請先選擇批號（在本站的批號排在最前面）。')
+      : (needM && !m) ? '請選擇這次作業使用的設備。'
+      : (v==='__none__' ? '此筆紀錄不會關聯到 MHR 批號' : '照片會記錄到批號 '+v) + (needM ? '、設備 '+m : '（MHR 設備主檔沒有此製程的設備，免選）') + '。';
   }
   lotUI();
   $('sTitle').textContent=(state.i+1)+'. '+stName(x.code);
   $('sBadge').innerHTML = ng ? '<span class="badge b-bad">異常</span>' : n ? '<span class="badge b-ok">已記錄 '+n+'</span>' : '<span class="badge b-wait">未記錄</span>';
-  $('sInfo').innerHTML=[['工單',o.no],['機種／料號',o.model+(o.part!==o.model?' / '+o.part:'')],['製程',stName(x.code)+'（'+x.code+'）'],['階段料號',x.stage||'—'],['內製／委外',x.os?'委外':'廠內'],['可用設備',ms.length?ms.map(function(m){return m.id;}).join('、'):'—']].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
+  $('sInfo').innerHTML=[['工單',o.no],['機種／料號',o.model+(o.part!==o.model?' / '+o.part:'')],['製程',stName(x.code)+'（'+x.code+'）'],['階段料號',x.stage||'—'],['內製／委外',x.os?'委外':'廠內'],['可用設備',ms.length?ms.length+' 台':'—']].map(function(r){ return '<div><dt>'+r[0]+'</dt><dd>'+esc(r[1])+'</dd></div>'; }).join('');
   $('recs').innerHTML = n ? rs.slice().reverse().map(function(r){
     var idx=rs.indexOf(r);
-    return '<div class="rec"><button class="ph" type="button" data-photo="'+idx+'" aria-label="放大照片"><img src="'+r.src+'" alt=""></button>'+
+    return '<div class="rec"><button class="ph" type="button" data-photo="'+idx+'" aria-label="查看 '+r.photos.length+' 張照片"><img src="'+r.photos[0].src+'" alt="">'+(r.photos.length>1?'<span class="cnt">'+r.photos.length+' 張</span>':'')+'</button>'+
       '<div class="tx"><div>'+(r.res==='NG'?'<span class="badge b-bad">異常 NG</span>':'<span class="badge b-ok">正常 OK</span>')+'</div>'+
       '<div><b>'+esc(r.atText)+'</b> <span class="meta">'+esc(r.tz)+'</span></div>'+
       '<div><b style="font-family:ui-monospace,Menlo,Consolas,monospace">'+esc(r.lot||'未對應批號')+'</b></div>'+
       '<div class="meta">'+esc(r.by)+'（'+esc(r.empId)+'）'+(r.machine?' · 設備 '+esc(r.machine):'')+'</div>'+
       (r.note?'<div>'+esc(r.note)+'</div>':'')+
-      '<div class="hash">SHA-256 '+esc(r.hash)+'</div></div></div>';
+      '<div class="hash">'+r.photos.length+' 張 · SHA-256 '+esc(r.photos.map(function(p){ return p.hash.slice(0,12); }).join(' / '))+'…</div></div></div>';
   }).join('') : '<p class="empty">此工站尚無紀錄。按上方「拍照紀錄」開啟相機。</p>';
 }
 
 /* ---------------- 工單號帶入 ---------------- */
 $('searchForm').addEventListener('submit', function(e){ e.preventDefault(); var v=$('woInput').value.trim(); if(!v){ $('woErr').textContent='請輸入工單號'; return; } if(dataSrc==='loading'){ $('woErr').textContent='工單還在載入中，請稍候'; return; } lookup(v); });
 
-/* ---------------- 網頁內相機（拍攝當下時間由程式寫入，無相簿上傳） ---------------- */
-var camStream=null, clockT=null, shot=null;
-$('shootBtn').onclick = function(){ if(!$('lotSel').value){ toast('請先選擇批號'); return; } openCam(); };
+/* ---------------- 網頁內相機（拍攝當下時間由程式寫入，無相簿上傳；一筆紀錄可多張） ---------------- */
+var camStream=null, clockT=null, shots=[];
+$('shootBtn').onclick = function(){ if($('shootBtn').disabled){ toast('請先選擇批號與設備'); return; } openCam(); };
 $('camClose').onclick = function(){ closeCam(); };
 function curStation(){ return curOrder.route[state.i]; }
-function selLot(){ var v=curLot[curOrder.key+'|'+state.i]||''; return v==='__none__' ? '' : v; }
+function ck(){ return curOrder.key+'|'+state.i; }
+function selLot(){ var v=curLot[ck()]||''; return v==='__none__' ? '' : v; }
+function selMach(){ return curMach[ck()]||''; }
 function openCam(){
-  shot=null; $('cam').classList.add('open'); document.body.style.overflow='hidden';
-  $('camTitle').textContent = (state.i+1)+'. '+stName(curStation().code);
+  shots=[]; $('review').reset();
+  $('cam').classList.add('open'); document.body.style.overflow='hidden';
+  $('camTitle').textContent = (state.i+1)+'. '+stName(curStation().code)+(selMach()?' · '+selMach():'');
   $('camSub').textContent = '工單 '+curOrder.no+' · 批號 '+(selLot()||'未對應')+' · '+me.name;
-  $('camShot').hidden=true; $('camVideo').hidden=false; $('review').hidden=true; $('camBot').hidden=false;
-  $('shutter').disabled=true; $('camMsg').textContent='正在開啟相機…';
   tickClock(); clockT=setInterval(tickClock,1000);
+  showLive();
+}
+function showLive(){
+  $('review').hidden=true; $('camBot').hidden=false; document.querySelector('#cam .stage').hidden=false;
+  renderStrip();
+  if(camStream) return;
+  $('shutter').disabled=true; $('camMsg').textContent='正在開啟相機…';
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ camFail('此瀏覽器或開啟方式無法使用相機。<br>請以 https 網址開啟。'); return; }
   navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1440} }, audio:false })
     .then(function(s){
@@ -731,40 +772,56 @@ function openCam(){
       camStream=s; var v=$('camVideo'); v.srcObject=s; return v.play().then(function(){ $('camMsg').textContent=''; $('shutter').disabled=false; $('shutter').focus(); });
     }).catch(function(){ camFail('無法開啟相機（可能未授權）。<br>請在瀏覽器設定允許此網頁使用相機。'); });
 }
+function showReview(){
+  $('camBot').hidden=true; document.querySelector('#cam .stage').hidden=true; $('review').hidden=false;
+  $('rvTitle').textContent='確認照片（'+shots.length+' 張）';
+  $('rvMeta').textContent='批號 '+(selLot()||'未對應')+(selMach()?' · '+selMach():'');
+  $('shots').innerHTML = shots.map(function(p,k){ return '<div class="shot"><img src="'+p.src+'" alt="照片 '+(k+1)+'"><span>'+p.atText.slice(11)+'</span><button type="button" data-del="'+k+'" aria-label="刪除第 '+(k+1)+' 張">✕</button></div>'; }).join('');
+}
+$('shots').addEventListener('click', function(e){ var b=e.target.closest('[data-del]'); if(!b) return; shots.splice(+b.getAttribute('data-del'),1); if(!shots.length){ showLive(); return; } showReview(); });
+$('moreShot').onclick = showLive;
+$('doneShots').onclick = function(){ if(shots.length) showReview(); };
+function renderStrip(){
+  $('strip').innerHTML = shots.map(function(p){ return '<img src="'+p.src+'" alt="">'; }).join('');
+  $('strip').scrollLeft = 99999;
+  $('camCount').textContent = shots.length+' 張';
+  $('doneShots').disabled = !shots.length;
+  $('doneShots').textContent = shots.length ? '完成（'+shots.length+'）' : '完成';
+}
 function camFail(html){
   $('camMsg').innerHTML = html + (me.demo ? '<br><br><button type="button" class="btn-sec" id="fakeShot" style="display:inline-flex;margin:0 auto">示範：使用測試影像</button>' : '');
   var b=$('fakeShot'); if(b) b.onclick=function(){ capture(true); };
 }
 function tickClock(){ var d=new Date(); $('camClock').textContent=fmtTime(d)+' '+tzLabel(d); }
 function stopStream(){ if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); camStream=null; } $('camVideo').srcObject=null; }
-function closeCam(){ if(!$('cam').classList.contains('open')) return; stopStream(); clearInterval(clockT); $('cam').classList.remove('open'); document.body.style.overflow=''; var b=$('shootBtn'); if(b && !$('vStation').hidden) b.focus(); }
-
+function closeCam(force){
+  if(!$('cam').classList.contains('open')) return;
+  if(!force && shots.length && !window.confirm('還有 '+shots.length+' 張照片尚未上傳，確定放棄？')) return;
+  shots=[]; stopStream(); clearInterval(clockT); $('cam').classList.remove('open'); document.body.style.overflow='';
+  var b=$('shootBtn'); if(b && !$('vStation').hidden) b.focus();
+}
 $('shutter').onclick = function(){ capture(false); };
 function capture(fake){
   var d = new Date();
   var x=curStation(), c=$('cv'), v=$('camVideo'), w, h, ctx;
   if(fake){ w=1600; h=1200; } else { w=v.videoWidth; h=v.videoHeight; }
+  if(!w || !h) return;
   c.width=w; c.height=h; ctx=c.getContext('2d');
-  if(fake){ var g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'#5a6b80'); g.addColorStop(1,'#2a3644'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='bold 72px sans-serif'; ctx.textAlign='center'; ctx.fillText('TEST IMAGE', w/2, h/2); ctx.textAlign='left'; }
+  if(fake){ var g=ctx.createLinearGradient(0,0,w,h); g.addColorStop(0,'#5a6b80'); g.addColorStop(1,'#2a3644'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h); ctx.fillStyle='rgba(255,255,255,.5)'; ctx.font='bold 72px sans-serif'; ctx.textAlign='center'; ctx.fillText('TEST IMAGE '+(shots.length+1), w/2, h/2); ctx.textAlign='left'; }
   else ctx.drawImage(v,0,0,w,h);
   var fs=Math.max(18,Math.round(w/52)), pad=Math.round(fs*0.7), lh=Math.round(fs*1.35);
-  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.no+' · 批號 '+(selLot()||'未對應'), curOrder.model+' · '+(state.i+1)+'. '+stName(x.code)+'('+x.code+') · '+me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
+  var lines=[ fmtTime(d)+' '+tzLabel(d), '工單 '+curOrder.no+' · 批號 '+(selLot()||'未對應'), curOrder.model+' · '+(state.i+1)+'. '+stName(x.code)+'('+x.code+')'+(selMach()?' · 設備 '+selMach():'')+' · '+me.name+'（'+me.empId+'）'+(me.demo?' · DEMO':'') ];
   var bh=pad*2+lh*lines.length;
   ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(0,h-bh,w,bh);
   ctx.fillStyle='#fff'; ctx.font='600 '+fs+'px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif'; ctx.textBaseline='top';
   lines.forEach(function(t,k){ ctx.fillText(t,pad,h-bh+pad+k*lh); });
+  var fl=$('flash'); fl.classList.add('on'); setTimeout(function(){ fl.classList.remove('on'); },60);
   c.toBlob(function(blob){
     var fr=new FileReader();
     fr.onload=function(){
-      shot={ src:fr.result, at:d.toISOString(), atText:fmtTime(d), tz:tzLabel(d), size:blob.size, hash:'計算中…' };
-      hashBlob(blob).then(function(hx){ if(shot) shot.hash=hx; $('rvMeta').textContent='拍攝 '+shot.atText+' '+shot.tz+' · '+Math.round(shot.size/1024)+' KB · SHA-256 '+hx.slice(0,16)+'…'; });
-      stopStream();
-      $('camVideo').hidden=true; $('camShot').src=shot.src; $('camShot').hidden=false; $('camMsg').textContent='';
-      $('camBot').hidden=true; $('review').hidden=false; $('review').reset(); $('rvMeta').textContent='拍攝 '+shot.atText+' '+shot.tz;
-      var ms=machinesFor(x.code, curOrder.site);
-      $('rvMachWrap').hidden = !ms.length;
-      $('rvMach').innerHTML = '<option value="">（不指定）</option>'+ms.map(function(m){ return '<option>'+esc(m.id)+'</option>'; }).join('');
-      if(ms.length===1) $('rvMach').value=ms[0].id;
+      var p={ src:fr.result, at:d.toISOString(), atText:fmtTime(d), tz:tzLabel(d), size:blob.size, hash:'計算中' };
+      shots.push(p); renderStrip();
+      hashBlob(blob).then(function(hx){ p.hash=hx; });
     };
     fr.readAsDataURL(blob);
   },'image/jpeg',0.88);
@@ -775,13 +832,13 @@ function hashBlob(blob){
     .then(function(h){ return Array.prototype.map.call(new Uint8Array(h),function(b){return b.toString(16).padStart(2,'0');}).join(''); })
     .catch(function(){ return '（雜湊失敗）'; });
 }
-$('retake').onclick = function(){ shot=null; openCam(); };
 $('review').addEventListener('submit', function(e){
-  e.preventDefault(); if(!shot) return;
+  e.preventDefault(); if(!shots.length) return;
   var res=(document.querySelector('input[name="res"]:checked')||{}).value||'OK';
-  recsOf(curOrder,state.i).push({ src:shot.src, at:shot.at, atText:shot.atText, tz:shot.tz, hash:shot.hash, size:shot.size, res:res, lot:selLot(), note:$('rvNote').value.trim(), machine:$('rvMach').value||'', by:me.name, empId:me.empId });
+  var p0=shots[0];
+  recsOf(curOrder,state.i).push({ photos:shots.slice(), at:p0.at, atText:p0.atText, tz:p0.tz, res:res, lot:selLot(), machine:selMach(), note:$('rvNote').value.trim(), by:me.name, empId:me.empId });
   // 正式版：影像上傳 Storage（NAS→Supabase 備份）並寫入 V5 紀錄表（server now() 為收件時間）
-  shot=null; closeCam(); renderStation(); toast('已記錄：'+stName(curStation().code)+'（'+res+'）');
+  var n=shots.length; closeCam(true); renderStation(); toast('已記錄：'+stName(curStation().code)+'，'+n+' 張（'+res+'）');
 });
 
 /* ---------------- 掃描工單條碼 ---------------- */
