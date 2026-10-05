@@ -25,10 +25,11 @@
   .brand span{font-size:10px;letter-spacing:2px;opacity:.85}
   .who{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px}
   .who .nm{font-weight:700;white-space:nowrap}
-  .who .fc{opacity:.9;white-space:nowrap}
+  .who .id{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;min-width:0}
+  .who .fc{opacity:.9;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
   .btn-out{height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.5);border-radius:6px;background:rgba(255,255,255,.12);color:#fff;font-size:13px;white-space:nowrap}
   .btn-out:hover{background:rgba(255,255,255,.22)}
-  @media (max-width:520px){ .who .fc{display:none} .brand span{display:none} }
+  @media (max-width:520px){ .brand span{display:none} }
 
   .wrap{max-width:900px;margin:0 auto;padding:16px 16px 48px;display:flex;flex-direction:column;gap:16px}
   .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -199,8 +200,7 @@
   <header class="topbar"><div class="in">
     <div class="brand"><b style="white-space:nowrap">V5 影像追溯</b><span>VISUAL TRACEABILITY</span></div>
     <div class="who">
-      <span class="nm" id="uName"></span>
-      <span class="fc" id="uFac"></span>
+      <span class="id"><span class="nm" id="uName"></span><span class="fc" id="uFac"></span></span>
       <button class="btn-out" type="button" id="logoutBtn">登出</button>
     </div>
   </div></header>
@@ -333,7 +333,7 @@
  *  V5 製程影像追溯 — MHR 附屬（測試版）
  *  身分：SyncHub/OMS（Supabase drfq…）  工單／途程：MHR（Supabase vwus…，唯讀）
  * ===================================================================== */
-var APP_VER = 'T0.7';
+var APP_VER = 'T0.8';
 // OMS / SyncHub（身分）
 var OMS_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
 var OMS_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
@@ -478,7 +478,7 @@ $('loginForm').addEventListener('submit', function(e){
     var prof = rows && rows[0];
     if(!prof) throw Object.assign(new Error('找不到帳號設定檔，請洽 DTO'),{status:'x'});
     if(prof.active===false) throw Object.assign(new Error('此帳號已停用，請洽 DTO'),{status:'x'});
-    me = { name:prof.name||prof.username, empId:prof.emp_id||prof.username, factories:prof.factories||[], demo:false, access:null };
+    me = { name:prof.name||prof.username, empId:prof.emp_id||prof.username, factories:prof.factories||[], role:prof.role||'', demo:false, access:null };
     return omsGet('/rest/v1/system_access?select=systems&emp_id=eq.'+encodeURIComponent(me.empId))
       .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; })
       .then(function(sa){
@@ -530,13 +530,18 @@ function demoOrders(){
     mk('WO-DEMO-0002','DEMO-BRK-02','DEMO-B','示範客戶','示範支架',1200,'2026/10/20',['DC','CN','GR','BL','PT','PK'],['PT'])
   ];
 }
+// 廠區權限：null = 管理人員看全部；陣列 = 只看這些廠區（簡稱）；空陣列 = 看不到任何資料
+// 管理人員＝OMS 角色 admin（DTO）、MHR 管理員、或 MHR 廠區設為「*」（集團主管）
+// 一般員工＝MHR 帳號的廠區（site_codes）＋事業群（bu_codes）展開；都沒設定 → fail-closed（V5 比 MHR 更嚴）
+var isManager = false;
 function computeScope(prof, sites){
-  // 照 MHR siteScopeBase()：admin／無限制 → null（全部）；否則展開事業群 → 內部廠區簡稱
-  if(!prof) return null;
-  if(prof.account_type==='admin' || prof.mhr_role==='admin') return null;
+  isManager = false;
+  if(me && me.role==='admin'){ isManager=true; return null; }
+  if(!prof) return [];
+  if(prof.account_type==='admin' || prof.mhr_role==='admin'){ isManager=true; return null; }
   var codes = prof.site_codes.slice();
+  if(codes.indexOf('*')>=0){ isManager=true; return null; }
   prof.bu_codes.forEach(function(bu){ sites.forEach(function(x){ if(x && x.bu_code===bu && x.code && codes.indexOf(x.code)<0) codes.push(x.code); }); });
-  if(!codes.length || codes.indexOf('*')>=0) return null;
   return VENDORS.filter(function(v){ return v.kind!=='out' && v.code && codes.indexOf(v.code)>=0; }).map(function(v){ return v.short; });
 }
 function isOut(short){ return VENDORS.some(function(v){ return v.short===short && v.kind==='out'; }); }
@@ -595,11 +600,15 @@ function machinesFor(code, site){
 
 /* ---------------- 主程式 ---------------- */
 function facLabel(){
-  if(mhr.profile && scope) return scope.length ? scope.join('、') : '未設定廠區';
+  if(me.demo) return '廠區：示範';
+  if(dataSrc==='mhr'){
+    if(!scope) return '全部廠區（管理）';
+    return scope.length ? '廠區：'+scope.join('、') : '廠區：未設定';
+  }
   var f = me.factories;
-  if(f==='ALL' || (mhr.profile && !scope)) return '全部廠區';
-  if(!Array.isArray(f) || !f.length) return '未設定廠區';
-  return f.map(function(c){ return FACTORY_NAMES[c]||c; }).join('、');
+  if(f==='ALL') return '全部廠區';
+  if(!Array.isArray(f) || !f.length) return '廠區：未設定';
+  return '廠區：'+f.map(function(c){ return FACTORY_NAMES[c]||c; }).join('、');
 }
 function startApp(){
   $('vLogin').hidden=true; $('vApp').hidden=false;
@@ -662,7 +671,8 @@ function renderOrders(only){
   $('vOrders').hidden=false;
   var b=$('srcBanner');
   if(dataSrc==='loading'){ b.hidden=false; b.className='banner ok'; b.textContent='正在從 MHR 讀取工單…'; }
-  else if(dataSrc==='mhr'){ b.hidden=false; b.className='banner ok'; b.textContent='已連線 MHR（'+mhr.via+'，唯讀）· 拍照紀錄目前只存在本機瀏覽器，重新整理會清空'; }
+  else if(dataSrc==='mhr' && scope && !scope.length){ b.hidden=false; b.className='banner warn'; b.textContent='你的帳號在 MHR 尚未設定所屬廠區，因此看不到任何工單。請洽 DTO 設定廠區。'; }
+  else if(dataSrc==='mhr'){ b.hidden=false; b.className='banner ok'; b.textContent='已連線 MHR（'+mhr.via+'，唯讀）· '+(scope?'只顯示 '+scope.join('、')+' 的工單':'管理人員：顯示全部廠區')+' · 拍照紀錄目前只存在本機瀏覽器'; }
   else { b.hidden=false; b.className='banner warn'; b.textContent='未連上 MHR，以下為示範工單'+(dataErr&&dataErr!=='示範模式'?'（原因：'+dataErr+'）':''); }
   $('listSrc').textContent = dataSrc==='mhr' ? 'MHR · '+ORDERS.length+' 筆' : dataSrc==='demo' ? '示範資料' : '';
   if(dataSrc==='loading'){ $('woList').innerHTML='<p class="empty">載入中…</p>'; return; }
