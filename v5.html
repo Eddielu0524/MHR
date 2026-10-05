@@ -333,7 +333,7 @@
  *  V5 製程影像追溯 — MHR 附屬（測試版）
  *  身分：SyncHub/OMS（Supabase drfq…）  工單／途程：MHR（Supabase vwus…，唯讀）
  * ===================================================================== */
-var APP_VER = 'T0.6';
+var APP_VER = 'T0.7';
 // OMS / SyncHub（身分）
 var OMS_URL = 'https://drfqoraijhzvvllncbei.supabase.co';
 var OMS_KEY = 'sb_publishable_PG_IHNnOMAe3oTMV6yV25w_-U-FjDwq';
@@ -624,7 +624,7 @@ document.addEventListener('click', function(e){
   t=e.target.closest('[data-key]'); if(t){ go({ v:'order', key:t.getAttribute('data-key') }); return; }
   t=e.target.closest('[data-stn]'); if(t){ go({ v:'station', key:curOrder.key, i:+t.getAttribute('data-stn') }); return; }
   t=e.target.closest('[data-photo]'); if(t){ var r=recsOf(curOrder,state.i)[+t.getAttribute('data-photo')];
-    $('lbImgs').innerHTML=r.photos.map(function(p,k){ return '<figure style="margin:0"><img src="'+p.src+'" alt="照片 '+(k+1)+'" style="width:100%;border-radius:8px;display:block"><figcaption class="meta" style="margin-top:4px">'+(k+1)+'/'+r.photos.length+' · '+esc(p.atText)+' · SHA-256 '+esc(p.hash)+'</figcaption></figure>'; }).join('');
+    $('lbImgs').innerHTML=r.photos.map(function(p,k){ return '<figure style="margin:0"><img src="'+p.src+'" alt="照片 '+(k+1)+'" style="width:100%;border-radius:8px;display:block"><figcaption class="meta" style="margin-top:4px">'+(k+1)+'/'+r.photos.length+' · '+esc(p.atText)+'</figcaption></figure>'; }).join('');
     $('lbTitle').textContent=stName(curOrder.route[state.i].code)+' · '+(r.lot||'未對應批號')+' · '+r.res; $('lbSub').textContent=r.by+(r.machine?' · 設備 '+r.machine:''); openDlg('lightbox'); return; }
   t=e.target.closest('[data-close]'); if(t){ closeDlg(t.getAttribute('data-close')); return; }
   t=e.target.closest('.scrim'); if(t && e.target===t){ closeDlg(t.id); }
@@ -737,7 +737,7 @@ function renderStation(){
       '<div><b style="font-family:ui-monospace,Menlo,Consolas,monospace">'+esc(r.lot||'未對應批號')+'</b></div>'+
       '<div class="meta">'+esc(r.by)+'（'+esc(r.empId)+'）'+(r.machine?' · 設備 '+esc(r.machine):'')+'</div>'+
       (r.note?'<div>'+esc(r.note)+'</div>':'')+
-      '<div class="hash">'+r.photos.length+' 張 · SHA-256 '+esc(r.photos.map(function(p){ return p.hash.slice(0,12); }).join(' / '))+'…</div></div></div>';
+      '</div></div>';
   }).join('') : '<p class="empty">此工站尚無紀錄。按上方「拍照紀錄」開啟相機。</p>';
 }
 
